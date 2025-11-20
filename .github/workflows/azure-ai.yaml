@@ -59,14 +59,14 @@ jobs:
             
             # Create compute instance with assigned user in the YAML
             # First, create a temporary compute YAML with assigned user
-            cat > /tmp/compute_with_user.yaml <<EOF
-\$schema: https://azuremlschemas.azureedge.net/latest/computeInstance.schema.json
+            cat > /tmp/compute_with_user.yaml <<'COMPUTEEOF'
+$schema: https://azuremlschemas.azureedge.net/latest/computeInstance.schema.json
 name: warre-compute
 type: computeinstance
 size: STANDARD_DS3_V2
 assigned_user:
-  object_id: $SP_OBJECT_ID
-  tenant_id: $TENANT_ID
+  object_id: SP_OBJECT_ID_PLACEHOLDER
+  tenant_id: TENANT_ID_PLACEHOLDER
 schedules:
   compute_start_stop:
     - action: stop
@@ -78,7 +78,10 @@ schedules:
         type: cron
 idle_time_before_shutdown: PT30M
 idle_time_before_shutdown_minutes: 30
-EOF
+COMPUTEEOF
+            # Replace placeholders with actual values
+            sed -i "s/SP_OBJECT_ID_PLACEHOLDER/$SP_OBJECT_ID/g" /tmp/compute_with_user.yaml
+            sed -i "s/TENANT_ID_PLACEHOLDER/$TENANT_ID/g" /tmp/compute_with_user.yaml
             
             # Delete existing compute if it exists (to recreate with assigned user)
             echo "Checking if compute instance exists..."
