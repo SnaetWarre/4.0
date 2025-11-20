@@ -6,11 +6,6 @@ on:
   push:
     branches:
       - master
-    paths:
-      - 'assignment/**'
-      - '.github/workflows/**'
-      - '**/*.yaml'
-      - '**/*.yml'
 
 env:
   GROUP: ${{ secrets.GROUP }}
