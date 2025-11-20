@@ -10,7 +10,7 @@ env:
   GROUP: ${{ secrets.GROUP }}
   WORKSPACE: ${{ secrets.WORKSPACE }}
   LOCATION: ${{ secrets.LOCATION }}
-  AZURE_CONFIG_DIR: ${{ runner.temp }}/.azure
+  AZURE_CONFIG_DIR: .azure-${{ github.run_id }}
 
 jobs:
   azure-pipeline:
