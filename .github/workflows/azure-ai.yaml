@@ -27,7 +27,7 @@ jobs:
           rm -rf "$AZURE_CONFIG_DIR/msal_http_cache" "$AZURE_CONFIG_DIR/msal_token_cache" || true
           rm -rf ~/.azure/msal_http_cache ~/.azure/msal_token_cache || true
 
-      - name: Azure -- Create compute cluster
+      - name: Azure -- Create compute
         uses: Azure/CLI@v2.1.0
         env:
           AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
@@ -45,8 +45,16 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            # Create compute cluster (no user assignment needed, scales to 0 when idle)
-            az ml compute create --file ./assignment/environment/compute_cluster.yaml || echo "Compute cluster may already exist"
+            az ml compute create --file ./assignment/environment/compute.yaml || echo "Compute may already exist"
+            
+            # Assign service principal as owner/user of the compute instance
+            echo "Assigning service principal permissions to compute instance..."
+            COMPUTE_ID=$(az ml compute show --name warre-compute --query id -o tsv)
+            az role assignment create \
+              --assignee "$CLIENT_ID" \
+              --role "Azure ML Data Scientist" \
+              --scope "$COMPUTE_ID" \
+              || echo "Role assignment may already exist"
 
       - name: Azure -- Start Compute
         uses: Azure/CLI@v2.1.0
@@ -210,7 +218,27 @@ jobs:
               fi
             fi
 
-      # Note: Compute clusters auto-scale down to 0 when idle, no cleanup needed
+      - name: Cleanup Compute
+        uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
+            az extension add --name ml
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            # Don't stop compute - keep it running for model registration to complete
+            # az ml compute stop --name warre-compute
+            echo "Compute left running to ensure model registration completes"
+        continue-on-error: true
 
   download:
     needs: azure-pipeline
