@@ -35,14 +35,14 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
-            # Re-login in container to ensure credentials are available
+            # Parse JSON without jq using Python (available in Azure CLI container)
             CREDS='${{ secrets.AZURE_CREDENTIALS }}'
-            az login --service-principal \
-              -u $(echo "$CREDS" | jq -r '.clientId') \
-              -p $(echo "$CREDS" | jq -r '.clientSecret') \
-              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
-              --output none 2>/dev/null || true
-            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml compute create --file ./assignment/environment/compute.yaml
@@ -56,12 +56,12 @@ jobs:
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             CREDS='${{ secrets.AZURE_CREDENTIALS }}'
-            az login --service-principal \
-              -u $(echo "$CREDS" | jq -r '.clientId') \
-              -p $(echo "$CREDS" | jq -r '.clientSecret') \
-              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
-              --output none 2>/dev/null || true
-            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             
@@ -82,12 +82,12 @@ jobs:
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             CREDS='${{ secrets.AZURE_CREDENTIALS }}'
-            az login --service-principal \
-              -u $(echo "$CREDS" | jq -r '.clientId') \
-              -p $(echo "$CREDS" | jq -r '.clientSecret') \
-              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
-              --output none 2>/dev/null || true
-            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml environment create --file ./assignment/environment/pillow.yaml
@@ -102,12 +102,12 @@ jobs:
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             CREDS='${{ secrets.AZURE_CREDENTIALS }}'
-            az login --service-principal \
-              -u $(echo "$CREDS" | jq -r '.clientId') \
-              -p $(echo "$CREDS" | jq -r '.clientSecret') \
-              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
-              --output none 2>/dev/null || true
-            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             # Loop through components
@@ -125,12 +125,12 @@ jobs:
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             CREDS='${{ secrets.AZURE_CREDENTIALS }}'
-            az login --service-principal \
-              -u $(echo "$CREDS" | jq -r '.clientId') \
-              -p $(echo "$CREDS" | jq -r '.clientSecret') \
-              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
-              --output none 2>/dev/null || true
-            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml job create --file ./assignment/pipelines/animals-classification.yaml --stream --set name=animals-classification-${{ github.sha }}-${{ github.run_id }}
@@ -144,12 +144,12 @@ jobs:
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             CREDS='${{ secrets.AZURE_CREDENTIALS }}'
-            az login --service-principal \
-              -u $(echo "$CREDS" | jq -r '.clientId') \
-              -p $(echo "$CREDS" | jq -r '.clientSecret') \
-              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
-              --output none 2>/dev/null || true
-            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml compute stop --name warre-compute
@@ -178,12 +178,12 @@ jobs:
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             CREDS='${{ secrets.AZURE_CREDENTIALS }}'
-            az login --service-principal \
-              -u $(echo "$CREDS" | jq -r '.clientId') \
-              -p $(echo "$CREDS" | jq -r '.clientSecret') \
-              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
-              --output none 2>/dev/null || true
-            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
+            CLIENT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientId'])" <<< "$CREDS")
+            CLIENT_SECRET=$(python3 -c "import sys, json; print(json.load(sys.stdin)['clientSecret'])" <<< "$CREDS")
+            TENANT_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['tenantId'])" <<< "$CREDS")
+            SUB_ID=$(python3 -c "import sys, json; print(json.load(sys.stdin)['subscriptionId'])" <<< "$CREDS")
+            az login --service-principal -u "$CLIENT_ID" -p "$CLIENT_SECRET" --tenant "$TENANT_ID" --output none
+            az account set --subscription "$SUB_ID"
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             VERSION=$(az ml model list -n animal-classification --query \"[0].version\" -o tsv)
