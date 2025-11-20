@@ -25,6 +25,8 @@ jobs:
           mkdir -p "$AZURE_CONFIG_DIR"
           # Clear any existing MSAL cache to avoid pickling errors
           rm -rf "$AZURE_CONFIG_DIR/msal_http_cache" "$AZURE_CONFIG_DIR/msal_token_cache" || true
+          # Also clear default cache location that azure/login might use
+          rm -rf ~/.azure/msal_http_cache ~/.azure/msal_token_cache || true
 
       - name: Azure Login
         uses: azure/login@v2
@@ -32,6 +34,7 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
         env:
           AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
+          HOME: ${{ github.workspace }}
 
       - name: Azure -- Create compute
         uses: Azure/CLI@v2.1.0
@@ -130,6 +133,8 @@ jobs:
           mkdir -p "$AZURE_CONFIG_DIR"
           # Clear any existing MSAL cache to avoid pickling errors
           rm -rf "$AZURE_CONFIG_DIR/msal_http_cache" "$AZURE_CONFIG_DIR/msal_token_cache" || true
+          # Also clear default cache location that azure/login might use
+          rm -rf ~/.azure/msal_http_cache ~/.azure/msal_token_cache || true
       
       - name: Azure Login
         uses: azure/login@v2
@@ -137,6 +142,7 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
         env:
           AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
+          HOME: ${{ github.workspace }}
 
       - name: Azure -- Download Model
         uses: Azure/CLI@v2.1.0
