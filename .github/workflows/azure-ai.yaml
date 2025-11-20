@@ -58,13 +58,10 @@ jobs:
             echo "Using object ID: $SP_OBJECT_ID"
             
             # Create compute instance with assigned user in the YAML
-            # Copy existing compute.yaml and add assigned_user using sed
+            # Copy existing compute.yaml and add assigned_user using Python one-liner
             cp ./assignment/environment/compute.yaml /tmp/compute_with_user.yaml
-            # Add assigned_user after the size line using sed
-            sed -i "/^size: STANDARD_DS3_V2/a\\
-assigned_user:\\
-  object_id: $SP_OBJECT_ID\\
-  tenant_id: $TENANT_ID" /tmp/compute_with_user.yaml
+            # Add assigned_user after the size line using Python
+            python3 -c "import yaml; f=open('/tmp/compute_with_user.yaml','r'); d=yaml.safe_load(f); f.close(); d['assigned_user']={'object_id':'$SP_OBJECT_ID','tenant_id':'$TENANT_ID'}; f=open('/tmp/compute_with_user.yaml','w'); yaml.dump(d,f,default_flow_style=False,sort_keys=False); f.close()"
             
             # Delete existing compute if it exists (to recreate with assigned user)
             echo "Checking if compute instance exists..."
