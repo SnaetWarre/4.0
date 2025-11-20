@@ -1,0 +1,159 @@
+name: MLOps Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  azure-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Azure -- Create compute
+        uses: Azure/CLI@v2.1.0
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            az extension add --name ml
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            az ml compute create --file ./environment/compute.yaml
+
+      - name: Azure -- Start Compute
+        uses: Azure/CLI@v2.1.0
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            az extension add --name ml -y
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            
+            # Robust start: Check state first
+            STATE=$(az ml compute show --name warre-compute --query state -o tsv)
+            if [ "$STATE" != "Running" ]; then
+              az ml compute start --name warre-compute
+            else
+              echo "Compute is already running."
+            fi
+ 
+      - name: Azure -- Environment Setup
+        uses: Azure/CLI@v2.1.0
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            az extension add --name ml
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            az ml environment create --file ./environment/pillow.yaml
+            az ml environment create --file ./environment/tensorflow.yaml
+
+      - name: Azure -- Component Setup
+        uses: Azure/CLI@v2.1.0
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            az extension add --name ml
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            # Loop through components
+            for file in ./components/*/*.yaml; do
+              echo "Creating component from $file"
+              az ml component create --file "$file"
+            done
+
+      - name: Azure -- Pipeline Run
+        uses: Azure/CLI@v2.1.0
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            az extension add --name ml
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            az ml job create --file ./pipelines/animals-classification.yaml --stream --set name=animals-classification-${{ github.sha }}-${{ github.run_id }}
+
+      - name: Cleanup Compute
+        uses: Azure/CLI@v2.1.0
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            az extension add --name ml
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            az ml compute stop --name warre-compute
+        continue-on-error: true
+
+  download:
+    needs: azure-pipeline
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Azure -- Download Model
+        uses: Azure/CLI@v2.1.0
+        with:
+          azcliversion: 2.64.0
+          inlineScript: |
+            az extension add --name ml -y
+            az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+            VERSION=$(az ml model list -n animal-classification --query "[0].version" -o tsv)
+            az ml model download --name animal-classification --version $VERSION --target-dir ./inference/model --overwrite
+
+      - name: Docker -- Upload API code from Inference
+        uses: actions/upload-artifact@v4.3.3
+        with:
+          name: docker-config
+          path: inference
+
+  deploy:
+    needs: download
+    runs-on: self-hosted
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Docker -- Gather Tags
+        id: docker-meta-data
+        uses: docker/metadata-action@v5.5.1
+        with:
+          images: |
+            ghcr.io/${{ github.repository_owner }}/mlops-animals-api
+          tags: |
+            type=ref,event=branch
+            type=sha
+      
+      - name: Docker -- Login to GHCR
+        uses: docker/login-action@v3.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker -- Download API Code for Inference
+        uses: actions/download-artifact@v4.1.7
+        with:
+          name: docker-config
+          path: inference
+
+      - name: Docker Build and push
+        id: docker_build
+        uses: docker/build-push-action@v5.3.0
+        with:
+          context: ./inference
+          push: true
+          tags: ${{ steps.docker-meta-data.outputs.tags }}
+
+      - name: Kubernetes -- Deploy
+        uses: actions-hub/kubectl@master
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        with:
+          args: apply -f ./kubernetes/deployment.yaml
