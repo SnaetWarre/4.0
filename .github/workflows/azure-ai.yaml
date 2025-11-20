@@ -10,6 +10,7 @@ env:
   GROUP: ${{ secrets.GROUP }}
   WORKSPACE: ${{ secrets.WORKSPACE }}
   LOCATION: ${{ secrets.LOCATION }}
+  AZURE_CONFIG_DIR: ./.azure
 
 jobs:
   azure-pipeline:
