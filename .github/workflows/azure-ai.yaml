@@ -58,17 +58,18 @@ jobs:
             echo "Using object ID: $SP_OBJECT_ID"
             
             # Create compute instance with assigned user in the YAML
-            # Create YAML file using Python to avoid heredoc YAML parsing issues
-            python3 <<PYEOF
+            # Create YAML file using Python script written to file to avoid YAML parsing issues
+            cat > /tmp/create_compute_yaml.py <<'PYSCRIPT'
 import yaml
+import os
 compute_config = {
     '$schema': 'https://azuremlschemas.azureedge.net/latest/computeInstance.schema.json',
     'name': 'warre-compute',
     'type': 'computeinstance',
     'size': 'STANDARD_DS3_V2',
     'assigned_user': {
-        'object_id': '$SP_OBJECT_ID',
-        'tenant_id': '$TENANT_ID'
+        'object_id': os.environ.get('SP_OBJECT_ID', ''),
+        'tenant_id': os.environ.get('TENANT_ID', '')
     },
     'schedules': {
         'compute_start_stop': [{
@@ -87,7 +88,8 @@ compute_config = {
 }
 with open('/tmp/compute_with_user.yaml', 'w') as f:
     yaml.dump(compute_config, f, default_flow_style=False, sort_keys=False)
-PYEOF
+PYSCRIPT
+            SP_OBJECT_ID="$SP_OBJECT_ID" TENANT_ID="$TENANT_ID" python3 /tmp/create_compute_yaml.py
             
             # Delete existing compute if it exists (to recreate with assigned user)
             echo "Checking if compute instance exists..."
