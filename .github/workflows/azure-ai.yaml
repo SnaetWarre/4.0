@@ -206,9 +206,25 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            VERSION=$(az ml model list -n animal-classification --query \"[0].version\" -o tsv)
-            if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
-              echo "ERROR: No model found with name 'animal-classification'. Pipeline may have failed to register the model."
+            # Wait for model to be registered (with retries)
+            echo "Waiting for model 'animal-classification' to be registered..."
+            MAX_RETRIES=30
+            RETRY_COUNT=0
+            VERSION=""
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              VERSION=$(az ml model list -n animal-classification --query \"[0].version\" -o tsv 2>/dev/null || echo "")
+              if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
+                echo "Model found! Version: $VERSION"
+                break
+              fi
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "Attempt $RETRY_COUNT/$MAX_RETRIES: Model not found yet, waiting 10 seconds..."
+              sleep 10
+            done
+            if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
+              echo "ERROR: No model found with name 'animal-classification' after $MAX_RETRIES attempts."
+              echo "Listing all models to debug:"
+              az ml model list --query \"[].{name:name, version:version}\" -o table
               exit 1
             fi
             echo "Downloading model version: $VERSION"
