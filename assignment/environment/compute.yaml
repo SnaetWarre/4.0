@@ -3,6 +3,9 @@ name: warre-compute
 type: computeinstance
 size: STANDARD_DS3_V2
 
+identity:
+  type: system_assigned
+
 schedules:
   compute_start_stop:
     - action: stop

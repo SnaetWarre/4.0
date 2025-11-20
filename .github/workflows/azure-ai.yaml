@@ -58,10 +58,10 @@ jobs:
             echo "Using object ID: $SP_OBJECT_ID"
             
             # Create compute instance with assigned user in the YAML
-            # Copy existing compute.yaml and add assigned_user using awk
+            # Copy existing compute.yaml and add assigned_user
             cp ./assignment/environment/compute.yaml /tmp/compute_with_user.yaml
-            # Add assigned_user after the size line using awk
-            awk -v obj_id="$SP_OBJECT_ID" -v tenant_id="$TENANT_ID" '/^size: STANDARD_DS3_V2/ {print; print "assigned_user:"; print "  object_id: " obj_id; print "  tenant_id: " tenant_id; next} {print}' /tmp/compute_with_user.yaml > /tmp/compute_with_user.yaml.tmp && mv /tmp/compute_with_user.yaml.tmp /tmp/compute_with_user.yaml
+            # Add assigned_user after identity section (if present) or after size
+            python3 -c "import sys; lines = open('/tmp/compute_with_user.yaml').readlines(); insert_idx = next((i + 1 for i, line in enumerate(lines) if line.strip() == 'type: system_assigned'), next((i + 1 for i, line in enumerate(lines) if line.strip() == 'size: STANDARD_DS3_V2'), None)); new_lines = lines[:insert_idx] + ['assigned_user:\n', '  object_id: ' + sys.argv[1] + '\n', '  tenant_id: ' + sys.argv[2] + '\n'] + lines[insert_idx:] if insert_idx else lines; open('/tmp/compute_with_user.yaml', 'w').writelines(new_lines)" "$SP_OBJECT_ID" "$TENANT_ID"
             
             # Delete existing compute if it exists (to recreate with assigned user)
             echo "Checking if compute instance exists..."
@@ -74,6 +74,73 @@ jobs:
             # Create compute instance with assigned user
             echo "Creating compute instance with assigned user..."
             az ml compute create --file /tmp/compute_with_user.yaml
+            
+            # Wait for compute to be fully provisioned
+            echo "Waiting for compute to be fully provisioned..."
+            sleep 10
+            
+            # Get the managed identity principal ID from the compute
+            echo "Getting managed identity from compute..."
+            COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-compute --query identity.principal_id -o tsv 2>/dev/null || echo "")
+            
+            if [ -n "$COMPUTE_IDENTITY_ID" ] && [ "$COMPUTE_IDENTITY_ID" != "null" ] && [ "$COMPUTE_IDENTITY_ID" != "" ]; then
+              echo "Found managed identity: $COMPUTE_IDENTITY_ID"
+              
+              # Get the ACR name from the workspace
+              WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
+              ACR_NAME=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); cr=ws.get('containerRegistry', ''); print(cr.split('/')[-1] if cr else '')" 2>/dev/null || echo "")
+              
+              # If still not found, try to get from associated resources
+              if [ -z "$ACR_NAME" ] || [ "$ACR_NAME" == "null" ] || [ "$ACR_NAME" == "" ]; then
+                # Try to find ACR in the same resource group
+                ACR_NAME=$(az acr list --resource-group $GROUP --query "[0].name" -o tsv 2>/dev/null || echo "")
+              fi
+              
+              if [ -n "$ACR_NAME" ] && [ "$ACR_NAME" != "null" ] && [ "$ACR_NAME" != "" ]; then
+                echo "Found ACR: $ACR_NAME"
+                ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv 2>/dev/null || echo "")
+                
+                if [ -n "$ACR_ID" ] && [ "$ACR_ID" != "null" ] && [ "$ACR_ID" != "" ]; then
+                  echo "Granting AcrPull role to managed identity on ACR..."
+                  az role assignment create \
+                    --assignee "$COMPUTE_IDENTITY_ID" \
+                    --role "AcrPull" \
+                    --scope "$ACR_ID" \
+                    || echo "ACR role assignment may already exist (this is OK)"
+                else
+                  echo "WARNING: Could not find ACR ID for $ACR_NAME"
+                fi
+              else
+                echo "WARNING: Could not determine ACR name from workspace. The workspace may use a different ACR configuration."
+                echo "You may need to manually grant AcrPull access to the compute's managed identity."
+              fi
+            else
+              echo "WARNING: Could not get managed identity from compute. Waiting a bit longer..."
+              sleep 10
+              COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-compute --query identity.principal_id -o tsv 2>/dev/null || echo "")
+              if [ -n "$COMPUTE_IDENTITY_ID" ] && [ "$COMPUTE_IDENTITY_ID" != "null" ] && [ "$COMPUTE_IDENTITY_ID" != "" ]; then
+                echo "Found managed identity on retry: $COMPUTE_IDENTITY_ID"
+                # Retry ACR assignment with the found identity
+                WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
+                ACR_NAME=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); cr=ws.get('containerRegistry', ''); print(cr.split('/')[-1] if cr else '')" 2>/dev/null || echo "")
+                if [ -z "$ACR_NAME" ] || [ "$ACR_NAME" == "null" ] || [ "$ACR_NAME" == "" ]; then
+                  ACR_NAME=$(az acr list --resource-group $GROUP --query "[0].name" -o tsv 2>/dev/null || echo "")
+                fi
+                if [ -n "$ACR_NAME" ] && [ "$ACR_NAME" != "null" ] && [ "$ACR_NAME" != "" ]; then
+                  ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv 2>/dev/null || echo "")
+                  if [ -n "$ACR_ID" ] && [ "$ACR_ID" != "null" ] && [ "$ACR_ID" != "" ]; then
+                    echo "Granting AcrPull role to managed identity on ACR..."
+                    az role assignment create \
+                      --assignee "$COMPUTE_IDENTITY_ID" \
+                      --role "AcrPull" \
+                      --scope "$ACR_ID" \
+                      || echo "ACR role assignment may already exist (this is OK)"
+                  fi
+                fi
+              else
+                echo "ERROR: Could not get managed identity from compute after retry"
+              fi
+            fi
             
             # Also assign workspace-level Contributor role
             WORKSPACE_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query id -o tsv)
