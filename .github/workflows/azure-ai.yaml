@@ -141,7 +141,19 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            az ml job create --file ./assignment/pipelines/animals-classification.yaml --stream --set name=animals-classification-${{ github.sha }}-${{ github.run_id }}
+            JOB_NAME="animals-classification-${{ github.sha }}-${{ github.run_id }}"
+            echo "Creating pipeline job: $JOB_NAME"
+            az ml job create --file ./assignment/pipelines/animals-classification.yaml --set name="$JOB_NAME" --query name -o tsv > /tmp/job_name.txt
+            JOB_NAME=$(cat /tmp/job_name.txt)
+            echo "Pipeline job created: $JOB_NAME"
+            echo "Waiting for pipeline job to complete..."
+            az ml job stream --name "$JOB_NAME" || true
+            echo "Checking final job status..."
+            JOB_STATUS=$(az ml job show --name "$JOB_NAME" --query status -o tsv)
+            echo "Job status: $JOB_STATUS"
+            if [ "$JOB_STATUS" != "Completed" ]; then
+              echo "WARNING: Pipeline job status is '$JOB_STATUS', not 'Completed'. Model may not be registered."
+            fi
 
       - name: Cleanup Compute
         uses: Azure/CLI@v2.1.0
