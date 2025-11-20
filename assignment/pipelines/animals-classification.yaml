@@ -10,8 +10,6 @@ inputs:
   epochs: 5
 
 outputs:
-  model: 
-    mode: upload
   registration_details:
     mode: upload
 
@@ -83,6 +81,7 @@ jobs:
     outputs:
       output_model:
         mode: rw_mount
+        type: uri_folder
 
   register:
     type: command
