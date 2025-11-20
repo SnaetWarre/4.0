@@ -6,6 +6,11 @@ on:
     branches:
       - main
 
+env:
+  GROUP: ${{ secrets.GROUP }}
+  WORKSPACE: ${{ secrets.WORKSPACE }}
+  LOCATION: ${{ secrets.LOCATION }}
+
 jobs:
   azure-pipeline:
     runs-on: ubuntu-latest
