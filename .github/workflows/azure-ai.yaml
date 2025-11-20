@@ -30,7 +30,7 @@ jobs:
           inlineScript: |
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            az ml compute create --file ./environment/compute.yaml
+            az ml compute create --file ./assignment/environment/compute.yaml
 
       - name: Azure -- Start Compute
         uses: Azure/CLI@v2.1.0
@@ -55,8 +55,8 @@ jobs:
           inlineScript: |
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            az ml environment create --file ./environment/pillow.yaml
-            az ml environment create --file ./environment/tensorflow.yaml
+            az ml environment create --file ./assignment/environment/pillow.yaml
+            az ml environment create --file ./assignment/environment/tensorflow.yaml
 
       - name: Azure -- Component Setup
         uses: Azure/CLI@v2.1.0
@@ -66,7 +66,7 @@ jobs:
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             # Loop through components
-            for file in ./components/*/*.yaml; do
+            for file in ./assignment/components/*/*.yaml; do
               echo "Creating component from $file"
               az ml component create --file "$file"
             done
@@ -78,7 +78,7 @@ jobs:
           inlineScript: |
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            az ml job create --file ./pipelines/animals-classification.yaml --stream --set name=animals-classification-${{ github.sha }}-${{ github.run_id }}
+            az ml job create --file ./assignment/pipelines/animals-classification.yaml --stream --set name=animals-classification-${{ github.sha }}-${{ github.run_id }}
 
       - name: Cleanup Compute
         uses: Azure/CLI@v2.1.0
@@ -109,14 +109,14 @@ jobs:
           inlineScript: |
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            VERSION=$(az ml model list -n animal-classification --query "[0].version" -o tsv)
-            az ml model download --name animal-classification --version $VERSION --target-dir ./inference/model --overwrite
+            VERSION=$(az ml model list -n animal-classification --query \"[0].version\" -o tsv)
+            az ml model download --name animal-classification --version $VERSION --download-path ./assignment/inference/model
 
       - name: Docker -- Upload API code from Inference
         uses: actions/upload-artifact@v4.3.3
         with:
           name: docker-config
-          path: inference
+          path: assignment/inference
 
   deploy:
     needs: download
@@ -152,7 +152,7 @@ jobs:
         id: docker_build
         uses: docker/build-push-action@v5.3.0
         with:
-          context: ./inference
+          context: ./assignment/inference
           push: true
           tags: ${{ steps.docker-meta-data.outputs.tags }}
 
@@ -161,4 +161,4 @@ jobs:
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         with:
-          args: apply -f ./kubernetes/deployment.yaml
+          args: apply -f ./assignment/kubernetes/deployment.yaml
