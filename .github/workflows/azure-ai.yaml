@@ -48,29 +48,30 @@ jobs:
             # Create compute instance
             az ml compute create --file ./assignment/environment/compute.yaml || echo "Compute may already exist"
             
-            # Assign service principal as user of the compute instance (required for compute instances)
-            echo "Assigning service principal as compute instance user..."
+            # Assign service principal permissions
+            echo "Assigning service principal permissions..."
             WORKSPACE_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query id -o tsv)
             
-            # Assign workspace-level role
+            # Assign workspace-level role (Contributor role has all permissions)
             az role assignment create \
               --assignee "$CLIENT_ID" \
-              --role "Azure ML Data Scientist" \
+              --role "Contributor" \
               --scope "$WORKSPACE_ID" \
               || echo "Workspace role assignment may already exist"
             
-            # Add service principal as assigned user to compute instance
-            # This requires updating the compute instance with assigned_users
-            echo "Adding service principal to compute instance assigned users..."
-            # Get current compute config
-            az ml compute show --name warre-compute -o json > /tmp/compute_config.json 2>/dev/null || echo "{}" > /tmp/compute_config.json
-            # Update with assigned user (using REST API via az rest)
+            # For compute instances, we also need to add as assigned user
+            # Get the service principal object ID (not client ID)
+            SP_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "$CLIENT_ID")
+            echo "Service principal object ID: $SP_OBJECT_ID"
+            
+            # Update compute instance to add assigned user via REST API
             COMPUTE_RESOURCE_ID="/subscriptions/$SUB_ID/resourceGroups/$GROUP/providers/Microsoft.MachineLearningServices/workspaces/$WORKSPACE/computes/warre-compute"
+            echo "Updating compute instance with assigned user..."
             az rest --method PATCH \
               --uri "https://management.azure.com$COMPUTE_RESOURCE_ID?api-version=2023-04-01-preview" \
               --headers "Content-Type=application/json" \
-              --body "{\"properties\":{\"computeInstanceAuthorizationType\":\"personal\",\"assignedUser\":{\"objectId\":\"$CLIENT_ID\"}}}" \
-              || echo "Note: May need to set computeInstanceAuthorizationType via portal or use different method"
+              --body "{\"properties\":{\"computeInstanceAuthorizationType\":\"personal\",\"personalComputeInstanceSettings\":{\"assignedUser\":{\"objectId\":\"$SP_OBJECT_ID\",\"tenantId\":\"$TENANT_ID\"}}}}" \
+              || echo "REST API update failed, trying alternative method..."
 
       - name: Azure -- Start Compute
         uses: Azure/CLI@v2.1.0
