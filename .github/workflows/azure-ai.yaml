@@ -269,16 +269,29 @@ jobs:
             MODEL_NAME="animal-classification"  # Default to expected name
             
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              # First try the expected name
-              VERSION=$(az ml model list --name animal-classification --query \"[0].version\" -o tsv 2>/dev/null || echo "")
+              # Try to get the latest version of the model
+              MODEL_INFO=$(az ml model show --name animal-classification --version latest --query "{name:name, version:version}" -o tsv 2>/dev/null || echo "")
               
-              # If not found, try to get the most recent model (in case name is different)
+              if [ -z "$MODEL_INFO" ] || [ "$MODEL_INFO" = "" ]; then
+                # Fallback: list all versions and get the latest
+                MODEL_INFO=$(az ml model list --name animal-classification --query \"sort_by([], &version)[-1].{name:name, version:version}\" -o tsv 2>/dev/null || echo "")
+              fi
+              
+              if [ -n "$MODEL_INFO" ] && [ "$MODEL_INFO" != "" ]; then
+                MODEL_NAME=$(echo "$MODEL_INFO" | cut -f1)
+                VERSION=$(echo "$MODEL_INFO" | cut -f2)
+                if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
+                  echo "Model found! Name: $MODEL_NAME, Version: $VERSION"
+                  break
+                fi
+              fi
+              
+              # Also try getting the most recent model by creation time (in case name differs)
               if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
                 RECENT_MODEL_INFO=$(az ml model list --query \"sort_by([], &creation_context.created_at)[-1].{name:name, version:version}\" -o tsv 2>/dev/null || echo "")
                 if [ -n "$RECENT_MODEL_INFO" ]; then
                   RECENT_NAME=$(echo "$RECENT_MODEL_INFO" | cut -f1)
                   RECENT_VERSION=$(echo "$RECENT_MODEL_INFO" | cut -f2)
-                  # If the recent model was created in the last few minutes, use it
                   echo "Found recent model: $RECENT_NAME version $RECENT_VERSION"
                   if [ "$RECENT_NAME" != "" ] && [ "$RECENT_VERSION" != "" ]; then
                     MODEL_NAME="$RECENT_NAME"
@@ -287,11 +300,6 @@ jobs:
                     break
                   fi
                 fi
-              fi
-              
-              if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
-                echo "Model found! Name: $MODEL_NAME, Version: $VERSION"
-                break
               fi
               
               RETRY_COUNT=$((RETRY_COUNT + 1))
