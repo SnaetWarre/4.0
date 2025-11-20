@@ -45,35 +45,17 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            # Get service principal object ID (required for compute instance assignment)
-            echo "Getting service principal object ID..."
-            SP_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
-            if [ -z "$SP_OBJECT_ID" ]; then
-              # Try alternative method
-              SP_OBJECT_ID=$(az ad sp list --display-name "$CLIENT_ID" --query "[0].id" -o tsv 2>/dev/null || echo "")
-            fi
-            if [ -z "$SP_OBJECT_ID" ]; then
-              SP_OBJECT_ID="$CLIENT_ID"
-            fi
-            echo "Using object ID: $SP_OBJECT_ID"
-            
-            # Create compute instance with assigned user in the YAML
-            # Copy existing compute.yaml and add assigned_user
-            cp ./assignment/environment/compute.yaml /tmp/compute_with_user.yaml
-            # Add assigned_user after identity section (if present) or after size
-            python3 -c "import sys; lines = open('/tmp/compute_with_user.yaml').readlines(); insert_idx = next((i + 1 for i, line in enumerate(lines) if line.strip() == 'type: system_assigned'), next((i + 1 for i, line in enumerate(lines) if line.strip() == 'size: STANDARD_DS3_V2'), None)); new_lines = lines[:insert_idx] + ['assigned_user:\n', '  object_id: ' + sys.argv[1] + '\n', '  tenant_id: ' + sys.argv[2] + '\n'] + lines[insert_idx:] if insert_idx else lines; open('/tmp/compute_with_user.yaml', 'w').writelines(new_lines)" "$SP_OBJECT_ID" "$TENANT_ID"
-            
-            # Delete existing compute if it exists (to recreate with assigned user)
+            # Delete existing compute if it exists (to recreate with managed identity)
             echo "Checking if compute instance exists..."
             if az ml compute show --name warre-compute &>/dev/null; then
-              echo "Deleting existing compute instance to recreate with assigned user..."
+              echo "Deleting existing compute instance to recreate with managed identity..."
               az ml compute delete --name warre-compute --yes || echo "Delete failed or not needed"
               sleep 5
             fi
             
-            # Create compute instance with assigned user
-            echo "Creating compute instance with assigned user..."
-            az ml compute create --file /tmp/compute_with_user.yaml
+            # Create compute instance with managed identity (for ACR authentication)
+            echo "Creating compute instance with managed identity..."
+            az ml compute create --file ./assignment/environment/compute.yaml
             
             # Wait for compute to be fully provisioned
             echo "Waiting for compute to be fully provisioned..."
