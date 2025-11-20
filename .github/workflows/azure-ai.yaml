@@ -158,14 +158,34 @@ jobs:
               exit 1
             fi
             echo "Pipeline job completed successfully. Checking child jobs..."
+            # List all child jobs to see their status
+            echo "Child jobs status:"
+            az ml job list --parent-job-name "$JOB_NAME" --query "[].{name:name, displayName:display_name, status:status}" -o table
             # Check if register job succeeded
             REGISTER_JOB=$(az ml job list --parent-job-name "$JOB_NAME" --query "[?contains(display_name, 'register') || contains(name, 'register')].{name:name, status:status}" -o tsv | head -1)
             if [ -n "$REGISTER_JOB" ]; then
+              REGISTER_NAME=$(echo "$REGISTER_JOB" | cut -f1)
               REGISTER_STATUS=$(echo "$REGISTER_JOB" | cut -f2)
+              echo "Register job name: $REGISTER_NAME"
               echo "Register job status: $REGISTER_STATUS"
               if [ "$REGISTER_STATUS" != "Completed" ]; then
-                echo "WARNING: Register job status is '$REGISTER_STATUS', model may not be registered."
+                echo "ERROR: Register job status is '$REGISTER_STATUS', model may not be registered."
+                echo "Register job details:"
+                az ml job show --name "$REGISTER_NAME" --query "{status:status, error:error}" -o json
+                exit 1
               fi
+            else
+              echo "WARNING: Could not find register job in child jobs list"
+            fi
+            # Wait a bit for model registration to propagate
+            echo "Waiting 10 seconds for model registration to propagate..."
+            sleep 10
+            # Check if model exists now
+            MODEL_CHECK=$(az ml model list -n animal-classification --query "[0].version" -o tsv 2>/dev/null || echo "")
+            if [ -n "$MODEL_CHECK" ] && [ "$MODEL_CHECK" != "null" ]; then
+              echo "Model found! Version: $MODEL_CHECK"
+            else
+              echo "WARNING: Model not found immediately after pipeline completion. It may appear shortly."
             fi
 
       - name: Cleanup Compute
@@ -185,7 +205,9 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            az ml compute stop --name warre-compute
+            # Don't stop compute - keep it running for model registration to complete
+            # az ml compute stop --name warre-compute
+            echo "Compute left running to ensure model registration completes"
         continue-on-error: true
 
   download:
