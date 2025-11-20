@@ -201,7 +201,9 @@ jobs:
             else
               echo "Model 'animal-classification' not found. Checking for any recently registered models..."
               # Get the most recent model (might be registered with a different name)
-              RECENT_MODEL=$(az ml model list --query "sort_by([], &creation_context.created_at)[-1].{name:name, version:version}" -o tsv 2>/dev/null || echo "")
+              # Get most recent model using Python to parse JSON
+              ALL_MODELS_JSON=$(az ml model list --query "[].{name:name, version:version}" -o json 2>/dev/null || echo "[]")
+              RECENT_MODEL=$(echo "$ALL_MODELS_JSON" | python3 -c "import sys, json; models=json.load(sys.stdin); print(f\"{models[-1]['name']}\t{models[-1]['version']}\")" 2>/dev/null || echo "")
               if [ -n "$RECENT_MODEL" ]; then
                 echo "Most recent model: $RECENT_MODEL"
               fi
@@ -269,35 +271,35 @@ jobs:
             MODEL_NAME="animal-classification"  # Default to expected name
             
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              # Try to get the latest version of the model
-              MODEL_INFO=$(az ml model show --name animal-classification --version latest --query "{name:name, version:version}" -o tsv 2>/dev/null || echo "")
+              # Try to get the latest version of the model using model show
+              VERSION=$(az ml model show --name animal-classification --version latest --query version -o tsv 2>/dev/null || echo "")
               
-              if [ -z "$MODEL_INFO" ] || [ "$MODEL_INFO" = "" ]; then
-                # Fallback: list all versions and get the latest
-                MODEL_INFO=$(az ml model list --name animal-classification --query \"sort_by([], &version)[-1].{name:name, version:version}\" -o tsv 2>/dev/null || echo "")
-              fi
-              
-              if [ -n "$MODEL_INFO" ] && [ "$MODEL_INFO" != "" ]; then
-                MODEL_NAME=$(echo "$MODEL_INFO" | cut -f1)
-                VERSION=$(echo "$MODEL_INFO" | cut -f2)
-                if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
-                  echo "Model found! Name: $MODEL_NAME, Version: $VERSION"
-                  break
-                fi
-              fi
-              
-              # Also try getting the most recent model by creation time (in case name differs)
+              # If that fails, try listing and getting the first (should be latest)
               if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
-                RECENT_MODEL_INFO=$(az ml model list --query \"sort_by([], &creation_context.created_at)[-1].{name:name, version:version}\" -o tsv 2>/dev/null || echo "")
-                if [ -n "$RECENT_MODEL_INFO" ]; then
-                  RECENT_NAME=$(echo "$RECENT_MODEL_INFO" | cut -f1)
-                  RECENT_VERSION=$(echo "$RECENT_MODEL_INFO" | cut -f2)
-                  echo "Found recent model: $RECENT_NAME version $RECENT_VERSION"
-                  if [ "$RECENT_NAME" != "" ] && [ "$RECENT_VERSION" != "" ]; then
-                    MODEL_NAME="$RECENT_NAME"
-                    VERSION="$RECENT_VERSION"
-                    echo "Using model: $MODEL_NAME version $VERSION"
-                    break
+                VERSION=$(az ml model list --name animal-classification --query "[0].version" -o tsv 2>/dev/null || echo "")
+              fi
+              
+              if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
+                echo "Model found! Name: $MODEL_NAME, Version: $VERSION"
+                break
+              fi
+              
+              # Also try getting any model (in case name differs)
+              if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
+                ALL_MODELS_JSON=$(az ml model list --query "[].{name:name, version:version}" -o json 2>/dev/null || echo "[]")
+                if [ "$ALL_MODELS_JSON" != "[]" ] && [ -n "$ALL_MODELS_JSON" ]; then
+                  # Use Python to parse JSON and get the most recent
+                  RECENT_MODEL=$(echo "$ALL_MODELS_JSON" | python3 -c "import sys, json; models=json.load(sys.stdin); print(f\"{models[-1]['name']}\t{models[-1]['version']}\")" 2>/dev/null || echo "")
+                  if [ -n "$RECENT_MODEL" ]; then
+                    RECENT_NAME=$(echo "$RECENT_MODEL" | cut -f1)
+                    RECENT_VERSION=$(echo "$RECENT_MODEL" | cut -f2)
+                    echo "Found recent model: $RECENT_NAME version $RECENT_VERSION"
+                    if [ "$RECENT_NAME" != "" ] && [ "$RECENT_VERSION" != "" ]; then
+                      MODEL_NAME="$RECENT_NAME"
+                      VERSION="$RECENT_VERSION"
+                      echo "Using model: $MODEL_NAME version $VERSION"
+                      break
+                    fi
                   fi
                 fi
               fi
@@ -306,7 +308,7 @@ jobs:
               echo "Attempt $RETRY_COUNT/$MAX_RETRIES: Model not found yet, waiting 10 seconds..."
               if [ $RETRY_COUNT -eq 5 ] || [ $RETRY_COUNT -eq 15 ]; then
                 echo "Debug: Listing all models:"
-                az ml model list --query \"[].{name:name, version:version, created:creation_context.created_at}\" -o table 2>/dev/null || echo "Could not list models"
+                az ml model list --query "[].{name:name, version:version}" -o table 2>/dev/null || echo "Could not list models"
               fi
               sleep 10
             done
@@ -314,7 +316,7 @@ jobs:
             if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
               echo "ERROR: No model found after $MAX_RETRIES attempts."
               echo "Listing all models to debug:"
-              az ml model list --query \"[].{name:name, version:version, created:creation_context.created_at}\" -o table
+              az ml model list --query "[].{name:name, version:version}" -o table
               exit 1
             fi
             
