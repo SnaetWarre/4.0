@@ -14,8 +14,8 @@ outputs:
     mode: upload
 
 settings:
-  default_compute: azureml:warre-cluster
-  # Using compute cluster - more cost-effective than serverless, no user assignment needed
+  # default_compute: serverless
+  default_compute: azureml:warre-compute
 
 jobs:
   data_prep_pandas:
