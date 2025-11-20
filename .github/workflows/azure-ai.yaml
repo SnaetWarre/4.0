@@ -47,14 +47,26 @@ jobs:
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml compute create --file ./assignment/environment/compute.yaml || echo "Compute may already exist"
             
-            # Assign service principal as owner/user of the compute instance
-            echo "Assigning service principal permissions to compute instance..."
-            COMPUTE_ID=$(az ml compute show --name warre-compute --query id -o tsv)
+            # Assign service principal permissions to workspace and compute
+            echo "Assigning service principal permissions..."
+            WORKSPACE_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query id -o tsv)
+            
+            # Assign at workspace level (required for compute instance access)
             az role assignment create \
               --assignee "$CLIENT_ID" \
               --role "Azure ML Data Scientist" \
-              --scope "$COMPUTE_ID" \
-              || echo "Role assignment may already exist"
+              --scope "$WORKSPACE_ID" \
+              || echo "Workspace role assignment may already exist"
+            
+            # Also assign at compute level for good measure
+            COMPUTE_ID=$(az ml compute show --name warre-compute --query id -o tsv 2>/dev/null || echo "")
+            if [ -n "$COMPUTE_ID" ]; then
+              az role assignment create \
+                --assignee "$CLIENT_ID" \
+                --role "Azure ML Data Scientist" \
+                --scope "$COMPUTE_ID" \
+                || echo "Compute role assignment may already exist"
+            fi
 
       - name: Azure -- Start Compute
         uses: Azure/CLI@v2.1.0
