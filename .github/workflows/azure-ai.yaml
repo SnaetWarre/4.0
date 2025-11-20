@@ -110,10 +110,15 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            # Loop through components
-            for file in ./assignment/components/*/*.yaml; do
-              echo "Creating component from $file"
-              az ml component create --file "$file"
+            # Loop through components (only actual component YAML files, not conda.yaml)
+            for dir in ./assignment/components/*/; do
+              for file in "$dir"*.yaml; do
+                # Skip conda.yaml files - only process component definition files
+                if [[ "$file" != *"conda.yaml"* ]] && [[ -f "$file" ]]; then
+                  echo "Creating component from $file"
+                  az ml component create --file "$file"
+                fi
+              done
             done
 
       - name: Azure -- Pipeline Run
