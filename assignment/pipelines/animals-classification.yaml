@@ -14,8 +14,9 @@ outputs:
     mode: upload
 
 settings:
-  # default_compute: serverless
-  default_compute: azureml:warre-compute
+  default_compute: serverless
+  # Note: Using serverless compute for CI/CD as compute instances require user assignment
+  # default_compute: azureml:warre-compute
 
 jobs:
   data_prep_pandas:
