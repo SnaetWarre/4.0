@@ -180,12 +180,31 @@ jobs:
             # Wait a bit for model registration to propagate
             echo "Waiting 10 seconds for model registration to propagate..."
             sleep 10
-            # Check if model exists now
+            # Get the actual registered model name from registration_details
+            echo "Getting model registration details from pipeline outputs..."
+            # The registration_details output contains the actual model name and version
+            REGISTRATION_DETAILS=$(az ml job show --name "$JOB_NAME" --query "outputs.registration_details.path" -o tsv 2>/dev/null || echo "")
+            if [ -n "$REGISTRATION_DETAILS" ]; then
+              echo "Registration details path: $REGISTRATION_DETAILS"
+              # Try to get model name from registration details
+              MODEL_NAME_FROM_DETAILS=$(az ml job show --name "$JOB_NAME" --query "outputs.registration_details" -o json 2>/dev/null | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('path', ''))" || echo "")
+            fi
+            # List all models to see what was actually registered
+            echo "Checking for registered models..."
+            ALL_MODELS=$(az ml model list --query "[].{name:name, version:version}" -o table 2>/dev/null || echo "")
+            echo "All registered models:"
+            echo "$ALL_MODELS"
+            # Try the expected name first
             MODEL_CHECK=$(az ml model list -n animal-classification --query "[0].version" -o tsv 2>/dev/null || echo "")
             if [ -n "$MODEL_CHECK" ] && [ "$MODEL_CHECK" != "null" ]; then
-              echo "Model found! Version: $MODEL_CHECK"
+              echo "Model 'animal-classification' found! Version: $MODEL_CHECK"
             else
-              echo "WARNING: Model not found immediately after pipeline completion. It may appear shortly."
+              echo "Model 'animal-classification' not found. Checking for any recently registered models..."
+              # Get the most recent model (might be registered with a different name)
+              RECENT_MODEL=$(az ml model list --query "sort_by([], &creation_context.created_at)[-1].{name:name, version:version}" -o tsv 2>/dev/null || echo "")
+              if [ -n "$RECENT_MODEL" ]; then
+                echo "Most recent model: $RECENT_MODEL"
+              fi
             fi
 
       - name: Cleanup Compute
@@ -242,43 +261,57 @@ jobs:
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             # Wait for model to be registered (with retries)
-            echo "Waiting for model 'animal-classification' to be registered..."
+            # First, try to get the actual model name from the most recent model
+            echo "Waiting for model to be registered..."
             MAX_RETRIES=30
             RETRY_COUNT=0
             VERSION=""
+            MODEL_NAME="animal-classification"  # Default to expected name
+            
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              # Try multiple query methods
+              # First try the expected name
               VERSION=$(az ml model list --name animal-classification --query \"[0].version\" -o tsv 2>/dev/null || echo "")
+              
+              # If not found, try to get the most recent model (in case name is different)
               if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
-                # Try without name filter
-                MODEL_COUNT=$(az ml model list --query \"[?name=='animal-classification'] | length(@)\" -o tsv 2>/dev/null || echo "0")
-                if [ "$MODEL_COUNT" != "0" ] && [ "$MODEL_COUNT" != "" ]; then
-                  VERSION=$(az ml model list --query \"[?name=='animal-classification'] | [0].version\" -o tsv 2>/dev/null || echo "")
+                RECENT_MODEL_INFO=$(az ml model list --query \"sort_by([], &creation_context.created_at)[-1].{name:name, version:version}\" -o tsv 2>/dev/null || echo "")
+                if [ -n "$RECENT_MODEL_INFO" ]; then
+                  RECENT_NAME=$(echo "$RECENT_MODEL_INFO" | cut -f1)
+                  RECENT_VERSION=$(echo "$RECENT_MODEL_INFO" | cut -f2)
+                  # If the recent model was created in the last few minutes, use it
+                  echo "Found recent model: $RECENT_NAME version $RECENT_VERSION"
+                  if [ "$RECENT_NAME" != "" ] && [ "$RECENT_VERSION" != "" ]; then
+                    MODEL_NAME="$RECENT_NAME"
+                    VERSION="$RECENT_VERSION"
+                    echo "Using model: $MODEL_NAME version $VERSION"
+                    break
+                  fi
                 fi
               fi
+              
               if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
-                echo "Model found! Version: $VERSION"
+                echo "Model found! Name: $MODEL_NAME, Version: $VERSION"
                 break
               fi
+              
               RETRY_COUNT=$((RETRY_COUNT + 1))
               echo "Attempt $RETRY_COUNT/$MAX_RETRIES: Model not found yet, waiting 10 seconds..."
               if [ $RETRY_COUNT -eq 5 ] || [ $RETRY_COUNT -eq 15 ]; then
                 echo "Debug: Listing all models:"
-                az ml model list --query \"[].{name:name, version:version, latestVersion:latest_version}\" -o table 2>/dev/null || echo "Could not list models"
+                az ml model list --query \"[].{name:name, version:version, created:creation_context.created_at}\" -o table 2>/dev/null || echo "Could not list models"
               fi
               sleep 10
             done
+            
             if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
-              echo "ERROR: No model found with name 'animal-classification' after $MAX_RETRIES attempts."
+              echo "ERROR: No model found after $MAX_RETRIES attempts."
               echo "Listing all models to debug:"
-              az ml model list --query \"[].{name:name, version:version, latestVersion:latest_version}\" -o table
-              echo ""
-              echo "Trying to find any model with 'animal' in the name:"
-              az ml model list --query \"[?contains(name, 'animal')].{name:name, version:version}\" -o table
+              az ml model list --query \"[].{name:name, version:version, created:creation_context.created_at}\" -o table
               exit 1
             fi
-            echo "Downloading model version: $VERSION"
-            az ml model download --name animal-classification --version "$VERSION" --download-path ./assignment/inference/model --resource-group $GROUP --workspace-name $WORKSPACE
+            
+            echo "Downloading model: $MODEL_NAME version $VERSION"
+            az ml model download --name "$MODEL_NAME" --version "$VERSION" --download-path ./assignment/inference/model --resource-group $GROUP --workspace-name $WORKSPACE
 
       - name: Docker -- Upload API code from Inference
         uses: actions/upload-artifact@v4.3.3
