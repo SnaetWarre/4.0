@@ -45,33 +45,60 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            # Create compute instance
-            az ml compute create --file ./assignment/environment/compute.yaml || echo "Compute may already exist"
+            # Get service principal object ID (required for compute instance assignment)
+            echo "Getting service principal object ID..."
+            SP_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+            if [ -z "$SP_OBJECT_ID" ]; then
+              # Try alternative method
+              SP_OBJECT_ID=$(az ad sp list --display-name "$CLIENT_ID" --query "[0].id" -o tsv 2>/dev/null || echo "")
+            fi
+            if [ -z "$SP_OBJECT_ID" ]; then
+              SP_OBJECT_ID="$CLIENT_ID"
+            fi
+            echo "Using object ID: $SP_OBJECT_ID"
             
-            # Assign service principal permissions
-            echo "Assigning service principal permissions..."
+            # Create compute instance with assigned user in the YAML
+            # First, create a temporary compute YAML with assigned user
+            cat > /tmp/compute_with_user.yaml <<EOF
+\$schema: https://azuremlschemas.azureedge.net/latest/computeInstance.schema.json
+name: warre-compute
+type: computeinstance
+size: STANDARD_DS3_V2
+assigned_user:
+  object_id: $SP_OBJECT_ID
+  tenant_id: $TENANT_ID
+schedules:
+  compute_start_stop:
+    - action: stop
+      state: enabled
+      trigger:
+        expression: 00 18 * * 1,2,3,4,5
+        time_zone: UTC
+        start_time: "2025-10-06T11:00:00"
+        type: cron
+idle_time_before_shutdown: PT30M
+idle_time_before_shutdown_minutes: 30
+EOF
+            
+            # Delete existing compute if it exists (to recreate with assigned user)
+            echo "Checking if compute instance exists..."
+            if az ml compute show --name warre-compute &>/dev/null; then
+              echo "Deleting existing compute instance to recreate with assigned user..."
+              az ml compute delete --name warre-compute --yes || echo "Delete failed or not needed"
+              sleep 5
+            fi
+            
+            # Create compute instance with assigned user
+            echo "Creating compute instance with assigned user..."
+            az ml compute create --file /tmp/compute_with_user.yaml
+            
+            # Also assign workspace-level Contributor role
             WORKSPACE_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query id -o tsv)
-            
-            # Assign workspace-level role (Contributor role has all permissions)
             az role assignment create \
               --assignee "$CLIENT_ID" \
               --role "Contributor" \
               --scope "$WORKSPACE_ID" \
               || echo "Workspace role assignment may already exist"
-            
-            # For compute instances, we also need to add as assigned user
-            # Get the service principal object ID (not client ID)
-            SP_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "$CLIENT_ID")
-            echo "Service principal object ID: $SP_OBJECT_ID"
-            
-            # Update compute instance to add assigned user via REST API
-            COMPUTE_RESOURCE_ID="/subscriptions/$SUB_ID/resourceGroups/$GROUP/providers/Microsoft.MachineLearningServices/workspaces/$WORKSPACE/computes/warre-compute"
-            echo "Updating compute instance with assigned user..."
-            az rest --method PATCH \
-              --uri "https://management.azure.com$COMPUTE_RESOURCE_ID?api-version=2023-04-01-preview" \
-              --headers "Content-Type=application/json" \
-              --body "{\"properties\":{\"computeInstanceAuthorizationType\":\"personal\",\"personalComputeInstanceSettings\":{\"assignedUser\":{\"objectId\":\"$SP_OBJECT_ID\",\"tenantId\":\"$TENANT_ID\"}}}}" \
-              || echo "REST API update failed, trying alternative method..."
 
       - name: Azure -- Start Compute
         uses: Azure/CLI@v2.1.0
