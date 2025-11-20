@@ -247,19 +247,34 @@ jobs:
             RETRY_COUNT=0
             VERSION=""
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-              VERSION=$(az ml model list -n animal-classification --query \"[0].version\" -o tsv 2>/dev/null || echo "")
+              # Try multiple query methods
+              VERSION=$(az ml model list --name animal-classification --query \"[0].version\" -o tsv 2>/dev/null || echo "")
+              if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
+                # Try without name filter
+                MODEL_COUNT=$(az ml model list --query \"[?name=='animal-classification'] | length(@)\" -o tsv 2>/dev/null || echo "0")
+                if [ "$MODEL_COUNT" != "0" ] && [ "$MODEL_COUNT" != "" ]; then
+                  VERSION=$(az ml model list --query \"[?name=='animal-classification'] | [0].version\" -o tsv 2>/dev/null || echo "")
+                fi
+              fi
               if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
                 echo "Model found! Version: $VERSION"
                 break
               fi
               RETRY_COUNT=$((RETRY_COUNT + 1))
               echo "Attempt $RETRY_COUNT/$MAX_RETRIES: Model not found yet, waiting 10 seconds..."
+              if [ $RETRY_COUNT -eq 5 ] || [ $RETRY_COUNT -eq 15 ]; then
+                echo "Debug: Listing all models:"
+                az ml model list --query \"[].{name:name, version:version, latestVersion:latest_version}\" -o table 2>/dev/null || echo "Could not list models"
+              fi
               sleep 10
             done
             if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
               echo "ERROR: No model found with name 'animal-classification' after $MAX_RETRIES attempts."
               echo "Listing all models to debug:"
-              az ml model list --query \"[].{name:name, version:version}\" -o table
+              az ml model list --query \"[].{name:name, version:version, latestVersion:latest_version}\" -o table
+              echo ""
+              echo "Trying to find any model with 'animal' in the name:"
+              az ml model list --query \"[?contains(name, 'animal')].{name:name, version:version}\" -o table
               exit 1
             fi
             echo "Downloading model version: $VERSION"
