@@ -10,7 +10,7 @@ env:
   GROUP: ${{ secrets.GROUP }}
   WORKSPACE: ${{ secrets.WORKSPACE }}
   LOCATION: ${{ secrets.LOCATION }}
-  AZURE_CONFIG_DIR: ./.azure
+  AZURE_CONFIG_DIR: ${{ runner.temp }}/.azure
 
 jobs:
   azure-pipeline:
@@ -18,6 +18,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Prepare Azure CLI cache dir
+        run: mkdir -p "$AZURE_CONFIG_DIR"
 
       - name: Azure Login
         uses: azure/login@v2
@@ -97,6 +100,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Prepare Azure CLI cache dir
+        run: mkdir -p "$AZURE_CONFIG_DIR"
       
       - name: Azure Login
         uses: azure/login@v2
