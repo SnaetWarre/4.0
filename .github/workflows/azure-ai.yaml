@@ -25,16 +25,7 @@ jobs:
           mkdir -p "$AZURE_CONFIG_DIR"
           # Clear any existing MSAL cache to avoid pickling errors
           rm -rf "$AZURE_CONFIG_DIR/msal_http_cache" "$AZURE_CONFIG_DIR/msal_token_cache" || true
-          # Also clear default cache location that azure/login might use
           rm -rf ~/.azure/msal_http_cache ~/.azure/msal_token_cache || true
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-        env:
-          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
-          HOME: ${{ github.workspace }}
 
       - name: Azure -- Create compute
         uses: Azure/CLI@v2.1.0
@@ -44,6 +35,14 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            # Re-login in container to ensure credentials are available
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            az login --service-principal \
+              -u $(echo "$CREDS" | jq -r '.clientId') \
+              -p $(echo "$CREDS" | jq -r '.clientSecret') \
+              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
+              --output none 2>/dev/null || true
+            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml compute create --file ./assignment/environment/compute.yaml
@@ -56,6 +55,13 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            az login --service-principal \
+              -u $(echo "$CREDS" | jq -r '.clientId') \
+              -p $(echo "$CREDS" | jq -r '.clientSecret') \
+              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
+              --output none 2>/dev/null || true
+            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             
@@ -75,6 +81,13 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            az login --service-principal \
+              -u $(echo "$CREDS" | jq -r '.clientId') \
+              -p $(echo "$CREDS" | jq -r '.clientSecret') \
+              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
+              --output none 2>/dev/null || true
+            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml environment create --file ./assignment/environment/pillow.yaml
@@ -88,6 +101,13 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            az login --service-principal \
+              -u $(echo "$CREDS" | jq -r '.clientId') \
+              -p $(echo "$CREDS" | jq -r '.clientSecret') \
+              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
+              --output none 2>/dev/null || true
+            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             # Loop through components
@@ -104,6 +124,13 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            az login --service-principal \
+              -u $(echo "$CREDS" | jq -r '.clientId') \
+              -p $(echo "$CREDS" | jq -r '.clientSecret') \
+              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
+              --output none 2>/dev/null || true
+            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml job create --file ./assignment/pipelines/animals-classification.yaml --stream --set name=animals-classification-${{ github.sha }}-${{ github.run_id }}
@@ -116,6 +143,13 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            az login --service-principal \
+              -u $(echo "$CREDS" | jq -r '.clientId') \
+              -p $(echo "$CREDS" | jq -r '.clientSecret') \
+              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
+              --output none 2>/dev/null || true
+            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml compute stop --name warre-compute
@@ -133,16 +167,7 @@ jobs:
           mkdir -p "$AZURE_CONFIG_DIR"
           # Clear any existing MSAL cache to avoid pickling errors
           rm -rf "$AZURE_CONFIG_DIR/msal_http_cache" "$AZURE_CONFIG_DIR/msal_token_cache" || true
-          # Also clear default cache location that azure/login might use
           rm -rf ~/.azure/msal_http_cache ~/.azure/msal_token_cache || true
-      
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-        env:
-          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
-          HOME: ${{ github.workspace }}
 
       - name: Azure -- Download Model
         uses: Azure/CLI@v2.1.0
@@ -152,6 +177,13 @@ jobs:
           azcliversion: 2.64.0
           inlineScript: |
             export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
+            CREDS='${{ secrets.AZURE_CREDENTIALS }}'
+            az login --service-principal \
+              -u $(echo "$CREDS" | jq -r '.clientId') \
+              -p $(echo "$CREDS" | jq -r '.clientSecret') \
+              --tenant $(echo "$CREDS" | jq -r '.tenantId') \
+              --output none 2>/dev/null || true
+            az account set --subscription $(echo "$CREDS" | jq -r '.subscriptionId') 2>/dev/null || true
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             VERSION=$(az ml model list -n animal-classification --query \"[0].version\" -o tsv)
