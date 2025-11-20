@@ -21,27 +21,38 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Prepare Azure CLI cache dir
-        run: mkdir -p "$AZURE_CONFIG_DIR"
+        run: |
+          mkdir -p "$AZURE_CONFIG_DIR"
+          # Clear any existing MSAL cache to avoid pickling errors
+          rm -rf "$AZURE_CONFIG_DIR/msal_http_cache" "$AZURE_CONFIG_DIR/msal_token_cache" || true
 
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
 
       - name: Azure -- Create compute
         uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml compute create --file ./assignment/environment/compute.yaml
 
       - name: Azure -- Start Compute
         uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             
@@ -55,9 +66,12 @@ jobs:
  
       - name: Azure -- Environment Setup
         uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml environment create --file ./assignment/environment/pillow.yaml
@@ -65,9 +79,12 @@ jobs:
 
       - name: Azure -- Component Setup
         uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             # Loop through components
@@ -78,18 +95,24 @@ jobs:
 
       - name: Azure -- Pipeline Run
         uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml job create --file ./assignment/pipelines/animals-classification.yaml --stream --set name=animals-classification-${{ github.sha }}-${{ github.run_id }}
 
       - name: Cleanup Compute
         uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml compute stop --name warre-compute
@@ -103,18 +126,26 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Prepare Azure CLI cache dir
-        run: mkdir -p "$AZURE_CONFIG_DIR"
+        run: |
+          mkdir -p "$AZURE_CONFIG_DIR"
+          # Clear any existing MSAL cache to avoid pickling errors
+          rm -rf "$AZURE_CONFIG_DIR/msal_http_cache" "$AZURE_CONFIG_DIR/msal_token_cache" || true
       
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
 
       - name: Azure -- Download Model
         uses: Azure/CLI@v2.1.0
+        env:
+          AZURE_CONFIG_DIR: ${{ env.AZURE_CONFIG_DIR }}
         with:
           azcliversion: 2.64.0
           inlineScript: |
+            export AZURE_CONFIG_DIR="$AZURE_CONFIG_DIR"
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             VERSION=$(az ml model list -n animal-classification --query \"[0].version\" -o tsv)
