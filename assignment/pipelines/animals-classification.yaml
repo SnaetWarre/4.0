@@ -81,7 +81,8 @@ jobs:
       testing_folder: ${{parent.jobs.data_split.outputs.testing_data}}
       epochs: ${{parent.inputs.epochs}}
     outputs:
-      output_model: ${{parent.outputs.model}}
+      output_model:
+        mode: rw_mount
 
   register:
     type: command
