@@ -107,8 +107,8 @@ def main():
                                                 verbose=1,
                                                 restore_best_weights=True)
 
-    # Reduce the Learning Rate when not learning more for 4 epochs.
-    cb_reduce_lr_on_plateau = keras.callbacks.ReduceLROnPlateau(factor=.5, patience=4, verbose=1)
+    # Use ExponentialDecay learning rate schedule
+    # Note: Cannot use ReduceLROnPlateau with LearningRateSchedule - they conflict
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
         initial_learning_rate=INITIAL_LEARNING_RATE,
         decay_steps=MAX_EPOCHS,
@@ -116,7 +116,7 @@ def main():
         staircase=True                    # if you prefer discrete drops
     )
 
-    # 2) Plug it into your optimizer
+    # Plug the schedule into the optimizer
     opt = tf.keras.optimizers.SGD(
         learning_rate=lr_schedule,
         momentum=0.0,                     # if you need momentum
@@ -141,7 +141,7 @@ def main():
                             validation_data=(X_test, y_test),
                             steps_per_epoch=len(X_train) // BATCH_SIZE,
                             epochs=MAX_EPOCHS,
-                            callbacks=[cb_save_best_model, cb_early_stop, cb_reduce_lr_on_plateau] )
+                            callbacks=[cb_save_best_model, cb_early_stop] )
 
     print("[INFO] evaluating network...")
     predictions = model.predict(X_test, batch_size=32)
@@ -155,7 +155,7 @@ def main():
     ### Find a way to log more information to the Run context.
 
     # Save the confusion matrix to the outputs.
-    np.save(os.path.join(output_folder, '/confusion_matrix.npy'), cf_matrix)
+    np.save(os.path.join(output_folder, 'confusion_matrix.npy'), cf_matrix)
 
     print("DONE TRAINING")
 
