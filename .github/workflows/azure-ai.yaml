@@ -114,6 +114,19 @@ jobs:
             echo "Checking if compute instance exists..."
             if az ml compute show --name warre-compute &>/dev/null; then
               echo "Compute instance already exists."
+              
+              # Check if the compute size is correct (STANDARD_DS11_V2)
+              CURRENT_SIZE=$(az ml compute show --name warre-compute --query size -o tsv 2>/dev/null || echo "")
+              if [ "$CURRENT_SIZE" != "STANDARD_DS11_V2" ]; then
+                 echo "Compute size mismatch (Found: $CURRENT_SIZE, Expected: STANDARD_DS11_V2). Recreating..."
+                 az ml compute delete --name warre-compute --yes --no-wait
+                 # Wait for deletion to register (simple sleep, polling would be better but keeping it simple)
+                 sleep 60 
+                 az ml compute create --file ./assignment/environment/compute.yaml
+              else
+                 echo "Compute size is correct."
+              fi
+
               # Ensure managed identity is enabled (required for ACR + job access)
               CURRENT_IDENTITY=$(az ml compute show --name warre-compute --query "identity.type" -o tsv 2>/dev/null || echo "")
               if [[ "$CURRENT_IDENTITY" != *"SystemAssigned"* ]]; then
