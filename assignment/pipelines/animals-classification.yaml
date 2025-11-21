@@ -20,8 +20,7 @@ settings:
 jobs:
   data_prep_pandas:
     type: command
-    # component: azureml:dataprep:0.1.0
-    component: ../components/dataprep/dataprep.yaml
+    component: azureml:data_prep_image_resize_cli@latest
     inputs:
       data: 
         type: uri_folder
@@ -33,8 +32,7 @@ jobs:
 
   data_prep_cats:
     type: command
-    # component: azureml:dataprep:0.1.0
-    component: ../components/dataprep/dataprep.yaml
+    component: azureml:data_prep_image_resize_cli@latest
     inputs:
       data: 
         type: uri_folder
@@ -46,8 +44,7 @@ jobs:
 
   data_prep_dogs:
     type: command
-    # component: azureml:dataprep:0.1.0
-    component: ../components/dataprep/dataprep.yaml
+    component: azureml:data_prep_image_resize_cli@latest
     inputs:
       data: 
         type: uri_folder
@@ -59,7 +56,7 @@ jobs:
 
   data_split:
     type: command
-    component: ../components/dataprep/data_split.yaml
+    component: azureml:data_split_cli@latest
     inputs:
       animal_1: ${{parent.jobs.data_prep_pandas.outputs.output_data}}
       animal_2: ${{parent.jobs.data_prep_cats.outputs.output_data}}
@@ -73,7 +70,7 @@ jobs:
 
   training:
     type: command
-    component: ../components/training/training.yaml
+    component: azureml:training_cli@latest
     inputs:
       training_folder: ${{parent.jobs.data_split.outputs.training_data}}
       testing_folder: ${{parent.jobs.data_split.outputs.testing_data}}
