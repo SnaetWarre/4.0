@@ -81,4 +81,14 @@ jobs:
     outputs:
       output_model: ${{parent.outputs.output_model}}
 
+  register:
+    type: command
+    component: azureml://registries/azureml/components/register_model/versions/0.0.21
+    inputs:
+      model_name: animal-classification
+      model_type: custom_model
+      model_path: ${{parent.jobs.training.outputs.output_model}}
+    outputs:
+      registration_details_folder: ${{ parent.outputs.registration_details }}
+
 
