@@ -77,7 +77,7 @@ jobs:
       epochs: ${{parent.inputs.epochs}}
     outputs:
       output_model:
-        mode: rw_mount
+        mode: upload
         type: uri_folder
 
 
