@@ -18,7 +18,7 @@ outputs:
 
 settings:
   # default_compute: serverless
-  default_compute: azureml:warre-compute
+  default_compute: azureml:warre-cluster
 
 jobs:
   data_prep_pandas:

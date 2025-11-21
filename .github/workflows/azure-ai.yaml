@@ -110,34 +110,19 @@ jobs:
             else
               echo "WARNING: Workspace identity principal ID unavailable."
             fi
-            # Check if compute exists
-            echo "Checking if compute instance exists..."
-            if az ml compute show --name warre-compute &>/dev/null; then
-              echo "Compute instance already exists."
-              
-              # Check if the compute size is correct (STANDARD_DS11_V2)
-              CURRENT_SIZE=$(az ml compute show --name warre-compute --query size -o tsv 2>/dev/null || echo "")
-              if [ "$CURRENT_SIZE" != "STANDARD_DS11_V2" ]; then
-                 echo "Compute size mismatch (Found: $CURRENT_SIZE, Expected: STANDARD_DS11_V2). Recreating..."
-                 az ml compute delete --name warre-compute --yes --no-wait
-                 # Wait for deletion to register (simple sleep, polling would be better but keeping it simple)
-                 sleep 60 
-                 az ml compute create --file ./assignment/environment/compute.yaml
-              else
-                 echo "Compute size is correct."
-              fi
-
-              # Ensure managed identity is enabled (required for ACR + job access)
-              CURRENT_IDENTITY=$(az ml compute show --name warre-compute --query "identity.type" -o tsv 2>/dev/null || echo "")
-              if [[ "$CURRENT_IDENTITY" != *"SystemAssigned"* ]]; then
-                echo "Existing compute lacks system-assigned identity. Updating..."
-                az ml compute update --name warre-compute --identity-type system_assigned || echo "WARNING: Failed to update identity. Consider recreating compute manually."
-              else
-                echo "Compute already has system-assigned identity."
-              fi
+            # Check if compute cluster exists
+            echo "Checking if compute cluster exists..."
+            if az ml compute show --name warre-cluster &>/dev/null; then
+              echo "Compute cluster already exists."
             else
-              echo "Compute instance not found. Creating with managed identity..."
-              az ml compute create --file ./assignment/environment/compute.yaml
+              echo "Compute cluster not found. Creating with managed identity..."
+              az ml compute create --file ./assignment/environment/compute-cluster.yaml
+            fi
+            
+            # Ensure the old compute instance is gone (cleanup)
+            if az ml compute show --name warre-compute &>/dev/null; then
+               echo "Removing legacy compute instance 'warre-compute'..."
+               az ml compute delete --name warre-compute --yes --no-wait || true
             fi
             
             # Wait for compute to be fully provisioned
@@ -146,12 +131,12 @@ jobs:
             
             # Get the managed identity principal ID from the compute
             echo "Getting managed identity from compute..."
-            COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-compute --query identity.principal_id -o tsv 2>/dev/null || echo "")
+            COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-cluster --query identity.principal_id -o tsv 2>/dev/null || echo "")
             
             if [ -z "$COMPUTE_IDENTITY_ID" ] || [ "$COMPUTE_IDENTITY_ID" == "null" ] || [ "$COMPUTE_IDENTITY_ID" == "" ]; then
               echo "WARNING: Could not get managed identity from compute. Waiting a bit longer..."
               sleep 10
-              COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-compute --query identity.principal_id -o tsv 2>/dev/null || echo "")
+              COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-cluster --query identity.principal_id -o tsv 2>/dev/null || echo "")
             fi
             
             if [ -n "$COMPUTE_IDENTITY_ID" ] && [ "$COMPUTE_IDENTITY_ID" != "null" ] && [ "$COMPUTE_IDENTITY_ID" != "" ]; then
@@ -213,12 +198,12 @@ jobs:
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             
-            # Robust start: Check state first
-            STATE=$(az ml compute show --name warre-compute --query state -o tsv)
-            if [ "$STATE" != "Running" ]; then
-              az ml compute start --name warre-compute
+            # Robust start: Check state first (Clusters don't need explicit start, but we can check provisioning state)
+            STATE=$(az ml compute show --name warre-cluster --query provisioning_state -o tsv)
+            if [ "$STATE" != "Succeeded" ]; then
+               echo "Compute cluster is in state: $STATE"
             else
-              echo "Compute is already running."
+              echo "Compute cluster is ready."
             fi
  
       - name: Azure -- Environment Setup
