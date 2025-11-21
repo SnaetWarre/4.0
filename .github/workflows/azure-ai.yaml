@@ -303,53 +303,18 @@ jobs:
             # List all child jobs to see their status
             echo "Child jobs status:"
             az ml job list --parent-job-name "$JOB_NAME" --query "[].{name:name, displayName:display_name, status:status}" -o table
-            # Check if register job succeeded
-            REGISTER_JOB=$(az ml job list --parent-job-name "$JOB_NAME" --query "[?contains(display_name, 'register') || contains(name, 'register')].{name:name, status:status}" -o tsv | head -1)
-            if [ -n "$REGISTER_JOB" ]; then
-              REGISTER_NAME=$(echo "$REGISTER_JOB" | cut -f1)
-              REGISTER_STATUS=$(echo "$REGISTER_JOB" | cut -f2)
-              echo "Register job name: $REGISTER_NAME"
-              echo "Register job status: $REGISTER_STATUS"
-              if [ "$REGISTER_STATUS" != "Completed" ]; then
-                echo "ERROR: Register job status is '$REGISTER_STATUS', model may not be registered."
-                echo "Register job details:"
-                az ml job show --name "$REGISTER_NAME" --query "{status:status, error:error}" -o json
-                exit 1
-              fi
-            else
-              echo "WARNING: Could not find register job in child jobs list"
+            # Register the trained model manually (replacing pipeline register step)
+            MODEL_OUTPUT_URI=$(az ml job show --name "$JOB_NAME" --query "outputs.output_model.uri" -o tsv)
+            if [ -z "$MODEL_OUTPUT_URI" ] || [ "$MODEL_OUTPUT_URI" = "null" ]; then
+              echo "ERROR: Could not determine model output URI, skipping registration."
+              exit 1
             fi
-            # Wait a bit for model registration to propagate
-            echo "Waiting 10 seconds for model registration to propagate..."
-            sleep 10
-            # Get the actual registered model name from registration_details
-            echo "Getting model registration details from pipeline outputs..."
-            # The registration_details output contains the actual model name and version
-            REGISTRATION_DETAILS=$(az ml job show --name "$JOB_NAME" --query "outputs.registration_details.path" -o tsv 2>/dev/null || echo "")
-            if [ -n "$REGISTRATION_DETAILS" ]; then
-              echo "Registration details path: $REGISTRATION_DETAILS"
-              # Try to get model name from registration details
-              MODEL_NAME_FROM_DETAILS=$(az ml job show --name "$JOB_NAME" --query "outputs.registration_details" -o json 2>/dev/null | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('path', ''))" || echo "")
-            fi
-            # List all models to see what was actually registered
-            echo "Checking for registered models..."
-            ALL_MODELS=$(az ml model list --query "[].{name:name, version:version}" -o table 2>/dev/null || echo "")
-            echo "All registered models:"
-            echo "$ALL_MODELS"
-            # Try the expected name first
-            MODEL_CHECK=$(az ml model list -n animal-classification --query "[0].version" -o tsv 2>/dev/null || echo "")
-            if [ -n "$MODEL_CHECK" ] && [ "$MODEL_CHECK" != "null" ]; then
-              echo "Model 'animal-classification' found! Version: $MODEL_CHECK"
-            else
-              echo "Model 'animal-classification' not found. Checking for any recently registered models..."
-              # Get the most recent model (might be registered with a different name)
-              # Get most recent model using Python to parse JSON
-              ALL_MODELS_JSON=$(az ml model list --query "[].{name:name, version:version}" -o json 2>/dev/null || echo "[]")
-              RECENT_MODEL=$(echo "$ALL_MODELS_JSON" | python3 -c "import sys, json; models=json.load(sys.stdin); print(f\"{models[-1]['name']}\t{models[-1]['version']}\")" 2>/dev/null || echo "")
-              if [ -n "$RECENT_MODEL" ]; then
-                echo "Most recent model: $RECENT_MODEL"
-              fi
-            fi
+            echo "Registering model from output URI: $MODEL_OUTPUT_URI"
+            az ml model create \
+              --name animal-classification \
+              --type custom_model \
+              --path "$MODEL_OUTPUT_URI" \
+              --tags git_sha="${{ github.sha }}" run_id="$JOB_NAME"
 
       - name: Cleanup Compute
         uses: Azure/CLI@v2.1.0
