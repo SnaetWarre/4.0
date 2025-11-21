@@ -57,11 +57,58 @@ jobs:
             WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
             WORKSPACE_IDENTITY_TYPE=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); print(ws.get('identity', {}).get('type', ''))" 2>/dev/null || echo "")
             if [[ "$WORKSPACE_IDENTITY_TYPE" != *"SystemAssigned"* ]]; then
-              echo "Workspace identity missing. Enabling system-assigned identity..."
-              az ml workspace update --name $WORKSPACE --resource-group $GROUP --identity-type SystemAssigned
-              WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
+              echo "Workspace identity missing. Enabling system-assigned identity via ARM update..."
+              WORKSPACE_RESOURCE_ID=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); print(ws.get('id', ''))" 2>/dev/null || echo "")
+              if [ -n "$WORKSPACE_RESOURCE_ID" ]; then
+                az resource update --ids "$WORKSPACE_RESOURCE_ID" --set identity.type="SystemAssigned"
+                WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
+              else
+                echo "WARNING: Could not determine workspace resource ID to enable identity."
+              fi
             else
               echo "Workspace already has system-assigned identity."
+            fi
+
+            WORKSPACE_ID=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); print(ws.get('id', ''))" 2>/dev/null || echo "")
+            WORKSPACE_IDENTITY_ID=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); print(ws.get('identity', {}).get('principalId', ''))" 2>/dev/null || echo "")
+
+            # Resolve container registry tied to the workspace (needed for role assignments)
+            ACR_NAME=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); cr=ws.get('containerRegistry', ''); print(cr.split('/')[-1] if cr else '')" 2>/dev/null || echo "")
+            if [ -z "$ACR_NAME" ] || [ "$ACR_NAME" == "null" ] || [ "$ACR_NAME" == "" ]; then
+              ACR_NAME=$(az acr list --resource-group $GROUP --query "[0].name" -o tsv 2>/dev/null || echo "")
+            fi
+            if [ -n "$ACR_NAME" ] && [ "$ACR_NAME" != "null" ]; then
+              ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv 2>/dev/null || echo "")
+            else
+              ACR_ID=""
+            fi
+
+            # Overkill permissions for workspace managed identity (pipeline runtime)
+            if [ -n "$WORKSPACE_IDENTITY_ID" ] && [ "$WORKSPACE_IDENTITY_ID" != "null" ]; then
+              if [ -n "$WORKSPACE_ID" ]; then
+                echo "Granting Contributor to workspace managed identity..."
+                az role assignment create \
+                  --assignee "$WORKSPACE_IDENTITY_ID" \
+                  --role "Contributor" \
+                  --scope "$WORKSPACE_ID" \
+                  || echo "Contributor role for workspace identity may already exist (OK)"
+                echo "Granting Reader to workspace managed identity..."
+                az role assignment create \
+                  --assignee "$WORKSPACE_IDENTITY_ID" \
+                  --role "Reader" \
+                  --scope "$WORKSPACE_ID" \
+                  || echo "Reader role for workspace identity may already exist (OK)"
+              fi
+              if [ -n "$ACR_ID" ]; then
+                echo "Granting AcrPull to workspace managed identity..."
+                az role assignment create \
+                  --assignee "$WORKSPACE_IDENTITY_ID" \
+                  --role "AcrPull" \
+                  --scope "$ACR_ID" \
+                  || echo "AcrPull role for workspace identity may already exist (OK)"
+              fi
+            else
+              echo "WARNING: Workspace identity principal ID unavailable."
             fi
             # Check if compute exists
             echo "Checking if compute instance exists..."
@@ -97,70 +144,43 @@ jobs:
             if [ -n "$COMPUTE_IDENTITY_ID" ] && [ "$COMPUTE_IDENTITY_ID" != "null" ] && [ "$COMPUTE_IDENTITY_ID" != "" ]; then
               echo "Found managed identity: $COMPUTE_IDENTITY_ID"
               
-              # Get the ACR name from the workspace
-              WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
-              ACR_NAME=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); cr=ws.get('containerRegistry', ''); print(cr.split('/')[-1] if cr else '')" 2>/dev/null || echo "")
-              
-              # If still not found, try to get from associated resources
-              if [ -z "$ACR_NAME" ] || [ "$ACR_NAME" == "null" ] || [ "$ACR_NAME" == "" ]; then
-                # Try to find ACR in the same resource group
-                ACR_NAME=$(az acr list --resource-group $GROUP --query "[0].name" -o tsv 2>/dev/null || echo "")
-              fi
-              
-              if [ -n "$ACR_NAME" ] && [ "$ACR_NAME" != "null" ] && [ "$ACR_NAME" != "" ]; then
-                echo "Found ACR: $ACR_NAME"
-                ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv 2>/dev/null || echo "")
-                
-                if [ -n "$ACR_ID" ] && [ "$ACR_ID" != "null" ] && [ "$ACR_ID" != "" ]; then
-                  echo "Granting AcrPull role to managed identity on ACR..."
-                  az role assignment create \
-                    --assignee "$COMPUTE_IDENTITY_ID" \
-                    --role "AcrPull" \
-                    --scope "$ACR_ID" \
-                    || echo "ACR role assignment may already exist (this is OK)"
-                else
-                  echo "WARNING: Could not find ACR ID for $ACR_NAME"
-                fi
-              else
-                echo "WARNING: Could not determine ACR name from workspace. The workspace may use a different ACR configuration."
-                echo "You may need to manually grant AcrPull access to the compute's managed identity."
-              fi
-              
-              # Grant compute's managed identity permission to read jobs (needed for run_utils)
-              WORKSPACE_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query id -o tsv)
-              echo "Granting Reader role to compute managed identity for job access..."
-              az role assignment create \
-                --assignee "$COMPUTE_IDENTITY_ID" \
-                --role "Reader" \
-                --scope "$WORKSPACE_ID" \
-                || echo "Workspace Reader role assignment may already exist (this is OK)"
-
-              # Ensure workspace managed identity (used by pipeline jobs) has Reader role
-              WORKSPACE_MI_ID=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); print(ws.get('identity', {}).get('principalId', ''))" 2>/dev/null || echo "")
-              if [ -z "$WORKSPACE_MI_ID" ] || [ "$WORKSPACE_MI_ID" == "null" ]; then
-                WORKSPACE_MI_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query "identity.principal_id" -o tsv 2>/dev/null || echo "")
-              fi
-              if [ -n "$WORKSPACE_MI_ID" ] && [ "$WORKSPACE_MI_ID" != "null" ]; then
-                echo "Granting Reader role to workspace managed identity (pipeline jobs) ..."
+              if [ -n "$ACR_ID" ]; then
+                echo "Granting AcrPull role to compute identity on ACR..."
                 az role assignment create \
-                  --assignee "$WORKSPACE_MI_ID" \
+                  --assignee "$COMPUTE_IDENTITY_ID" \
+                  --role "AcrPull" \
+                  --scope "$ACR_ID" \
+                  || echo "ACR role assignment may already exist (this is OK)"
+              else
+                echo "WARNING: Could not determine ACR ID for compute identity binding."
+              fi
+              
+              if [ -n "$WORKSPACE_ID" ]; then
+                echo "Granting Reader role to compute managed identity..."
+                az role assignment create \
+                  --assignee "$COMPUTE_IDENTITY_ID" \
                   --role "Reader" \
                   --scope "$WORKSPACE_ID" \
-                  || echo "Workspace managed identity Reader role may already exist (this is OK)"
-              else
-                echo "WARNING: Could not determine workspace managed identity principal ID."
+                  || echo "Workspace Reader role assignment may already exist (this is OK)"
+                echo "Granting Contributor role to compute managed identity..."
+                az role assignment create \
+                  --assignee "$COMPUTE_IDENTITY_ID" \
+                  --role "Contributor" \
+                  --scope "$WORKSPACE_ID" \
+                  || echo "Workspace Contributor role assignment may already exist (this is OK)"
               fi
             else
               echo "ERROR: Could not get managed identity from compute after retry"
             fi
             
             # Also assign workspace-level Contributor role to service principal
-            WORKSPACE_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query id -o tsv)
-            az role assignment create \
-              --assignee "$CLIENT_ID" \
-              --role "Contributor" \
-              --scope "$WORKSPACE_ID" \
-              || echo "Workspace role assignment may already exist"
+            if [ -n "$WORKSPACE_ID" ]; then
+              az role assignment create \
+                --assignee "$CLIENT_ID" \
+                --role "Contributor" \
+                --scope "$WORKSPACE_ID" \
+                || echo "Workspace role assignment may already exist"
+            fi
 
       - name: Azure -- Start Compute
         uses: Azure/CLI@v2.1.0
