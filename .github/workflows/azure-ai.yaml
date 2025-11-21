@@ -8,9 +8,9 @@ on:
       - master
 
 env:
-  GROUP: ${{ secrets.GROUP }}
-  WORKSPACE: ${{ secrets.WORKSPACE }}
-  LOCATION: ${{ secrets.LOCATION }}
+  GROUP: mlops-clean-rg
+  WORKSPACE: mlops-clean-ws
+  LOCATION: westeurope
   AZURE_CONFIG_DIR: .azure-${{ github.run_id }}
 
 jobs:

@@ -1,7 +1,7 @@
 $schema: https://azuremlschemas.azureedge.net/latest/computeInstance.schema.json
 name: warre-compute
 type: computeinstance
-size: STANDARD_DS3_V2
+size: STANDARD_DS11_V2
 
 identity:
   type: system_assigned
