@@ -51,6 +51,18 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
+
+            # Ensure workspace has system-assigned managed identity (needed for pipeline jobs)
+            echo "Ensuring workspace has system-assigned managed identity..."
+            WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
+            WORKSPACE_IDENTITY_TYPE=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); print(ws.get('identity', {}).get('type', ''))" 2>/dev/null || echo "")
+            if [[ "$WORKSPACE_IDENTITY_TYPE" != *"SystemAssigned"* ]]; then
+              echo "Workspace identity missing. Enabling system-assigned identity..."
+              az ml workspace update --name $WORKSPACE --resource-group $GROUP --identity-type SystemAssigned
+              WORKSPACE_JSON=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP -o json)
+            else
+              echo "Workspace already has system-assigned identity."
+            fi
             # Check if compute exists
             echo "Checking if compute instance exists..."
             if az ml compute show --name warre-compute &>/dev/null; then
