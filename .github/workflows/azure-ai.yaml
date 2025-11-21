@@ -306,7 +306,14 @@ jobs:
             # Register the trained model manually (replacing pipeline register step)
             MODEL_OUTPUT_URI=$(az ml job show --name "$JOB_NAME" --query "outputs.output_model.uri" -o tsv)
             if [ -z "$MODEL_OUTPUT_URI" ] || [ "$MODEL_OUTPUT_URI" = "null" ]; then
-              echo "ERROR: Could not determine model output URI, skipping registration."
+              echo "Pipeline output URI not found, attempting to read training child job output..."
+              TRAIN_JOB_NAME=$(az ml job list --parent-job-name "$JOB_NAME" --query "[?contains(display_name, 'Training') || contains(display_name, 'training')].name | [0]" -o tsv)
+              if [ -n "$TRAIN_JOB_NAME" ] && [ "$TRAIN_JOB_NAME" != "null" ]; then
+                MODEL_OUTPUT_URI=$(az ml job show --name "$TRAIN_JOB_NAME" --query "outputs.output_model.uri" -o tsv)
+              fi
+            fi
+            if [ -z "$MODEL_OUTPUT_URI" ] || [ "$MODEL_OUTPUT_URI" = "null" ]; then
+              echo "ERROR: Could not determine model output URI from pipeline or child jobs, skipping registration."
               exit 1
             fi
             echo "Registering model from output URI: $MODEL_OUTPUT_URI"
