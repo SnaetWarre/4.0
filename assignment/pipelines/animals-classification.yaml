@@ -12,6 +12,9 @@ inputs:
 outputs:
   registration_details:
     mode: upload
+  output_model:
+    mode: upload
+    type: uri_folder
 
 settings:
   # default_compute: serverless
@@ -76,8 +79,6 @@ jobs:
       testing_folder: ${{parent.jobs.data_split.outputs.testing_data}}
       epochs: ${{parent.inputs.epochs}}
     outputs:
-      output_model:
-        mode: upload
-        type: uri_folder
+      output_model: ${{parent.outputs.output_model}}
 
 
