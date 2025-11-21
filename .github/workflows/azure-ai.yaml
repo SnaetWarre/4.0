@@ -122,6 +122,22 @@ jobs:
                 --role "Reader" \
                 --scope "$WORKSPACE_ID" \
                 || echo "Workspace Reader role assignment may already exist (this is OK)"
+
+              # Ensure workspace managed identity (used by pipeline jobs) has Reader role
+              WORKSPACE_MI_ID=$(echo "$WORKSPACE_JSON" | python3 -c "import sys, json; ws=json.load(sys.stdin); print(ws.get('identity', {}).get('principalId', ''))" 2>/dev/null || echo "")
+              if [ -z "$WORKSPACE_MI_ID" ] || [ "$WORKSPACE_MI_ID" == "null" ]; then
+                WORKSPACE_MI_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query "identity.principal_id" -o tsv 2>/dev/null || echo "")
+              fi
+              if [ -n "$WORKSPACE_MI_ID" ] && [ "$WORKSPACE_MI_ID" != "null" ]; then
+                echo "Granting Reader role to workspace managed identity (pipeline jobs) ..."
+                az role assignment create \
+                  --assignee "$WORKSPACE_MI_ID" \
+                  --role "Reader" \
+                  --scope "$WORKSPACE_ID" \
+                  || echo "Workspace managed identity Reader role may already exist (this is OK)"
+              else
+                echo "WARNING: Could not determine workspace managed identity principal ID."
+              fi
             else
               echo "ERROR: Could not get managed identity from compute after retry"
             fi
