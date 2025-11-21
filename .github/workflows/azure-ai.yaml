@@ -51,17 +51,22 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            # Delete existing compute if it exists (to recreate with managed identity)
+            # Check if compute exists
             echo "Checking if compute instance exists..."
             if az ml compute show --name warre-compute &>/dev/null; then
-              echo "Deleting existing compute instance to recreate with managed identity..."
-              az ml compute delete --name warre-compute --yes || echo "Delete failed or not needed"
-              sleep 5
+              echo "Compute instance already exists."
+              # Ensure managed identity is enabled (required for ACR + job access)
+              CURRENT_IDENTITY=$(az ml compute show --name warre-compute --query "identity.type" -o tsv 2>/dev/null || echo "")
+              if [[ "$CURRENT_IDENTITY" != *"SystemAssigned"* ]]; then
+                echo "Existing compute lacks system-assigned identity. Updating..."
+                az ml compute update --name warre-compute --identity-type system_assigned || echo "WARNING: Failed to update identity. Consider recreating compute manually."
+              else
+                echo "Compute already has system-assigned identity."
+              fi
+            else
+              echo "Compute instance not found. Creating with managed identity..."
+              az ml compute create --file ./assignment/environment/compute.yaml
             fi
-            
-            # Create compute instance with managed identity (for ACR authentication)
-            echo "Creating compute instance with managed identity..."
-            az ml compute create --file ./assignment/environment/compute.yaml
             
             # Wait for compute to be fully provisioned
             echo "Waiting for compute to be fully provisioned..."
