@@ -251,8 +251,7 @@ jobs:
             az ml job create \
               --file ./assignment/pipelines/animals-classification.yaml \
               --set name="$JOB_NAME" \
-              --set identity.type=UserAssigned \
-              --set identity.user_assigned_id="$CLIENT_ID" \
+              --set identity.type=managed \
               --query name -o tsv > /tmp/job_name.txt
             JOB_NAME=$(cat /tmp/job_name.txt)
             echo "Pipeline job created: $JOB_NAME"
