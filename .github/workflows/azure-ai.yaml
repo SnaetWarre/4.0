@@ -287,6 +287,21 @@ jobs:
               --query name -o tsv > /tmp/job_name.txt
             JOB_NAME=$(cat /tmp/job_name.txt)
             echo "Pipeline job created: $JOB_NAME"
+
+            # Grant Reader permissions to the job's managed identity (register component requires jobs.read)
+            JOB_IDENTITY_ID=$(az ml job show --name "$JOB_NAME" --query identity.principal_id -o tsv 2>/dev/null || echo "")
+            WORKSPACE_ID=$(az ml workspace show --name $WORKSPACE --resource-group $GROUP --query id -o tsv)
+            if [ -n "$JOB_IDENTITY_ID" ] && [ "$JOB_IDENTITY_ID" != "null" ] && [ -n "$WORKSPACE_ID" ]; then
+              echo "Granting Reader role to pipeline job identity ($JOB_IDENTITY_ID)..."
+              az role assignment create \
+                --assignee "$JOB_IDENTITY_ID" \
+                --role "Reader" \
+                --scope "$WORKSPACE_ID" \
+                || echo "Job identity Reader role may already exist (OK)"
+            else
+              echo "WARNING: Could not determine job identity principal or workspace scope for Reader assignment."
+            fi
+
             echo "Waiting for pipeline job to complete..."
             az ml job stream --name "$JOB_NAME" || true
             echo "Checking final job status..."
