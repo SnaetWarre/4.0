@@ -118,30 +118,30 @@ jobs:
               echo "Compute cluster not found. Creating with managed identity..."
               az ml compute create --file ./assignment/environment/compute-cluster.yaml
             fi
-            
+
             # Ensure the old compute instance is gone (cleanup)
             if az ml compute show --name warre-compute &>/dev/null; then
                echo "Removing legacy compute instance 'warre-compute'..."
                az ml compute delete --name warre-compute --yes --no-wait || true
             fi
-            
+
             # Wait for compute to be fully provisioned
             echo "Waiting for compute to be fully provisioned..."
             sleep 10
-            
+
             # Get the managed identity principal ID from the compute
             echo "Getting managed identity from compute..."
             COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-cluster --query identity.principal_id -o tsv 2>/dev/null || echo "")
-            
+
             if [ -z "$COMPUTE_IDENTITY_ID" ] || [ "$COMPUTE_IDENTITY_ID" == "null" ] || [ "$COMPUTE_IDENTITY_ID" == "" ]; then
               echo "WARNING: Could not get managed identity from compute. Waiting a bit longer..."
               sleep 10
               COMPUTE_IDENTITY_ID=$(az ml compute show --name warre-cluster --query identity.principal_id -o tsv 2>/dev/null || echo "")
             fi
-            
+
             if [ -n "$COMPUTE_IDENTITY_ID" ] && [ "$COMPUTE_IDENTITY_ID" != "null" ] && [ "$COMPUTE_IDENTITY_ID" != "" ]; then
               echo "Found managed identity: $COMPUTE_IDENTITY_ID"
-              
+
               if [ -n "$ACR_ID" ]; then
                 echo "Granting AcrPull role to compute identity on ACR..."
                 az role assignment create \
@@ -152,7 +152,7 @@ jobs:
               else
                 echo "WARNING: Could not determine ACR ID for compute identity binding."
               fi
-              
+
               if [ -n "$WORKSPACE_ID" ]; then
                 echo "Granting Reader role to compute managed identity..."
                 az role assignment create \
@@ -170,7 +170,7 @@ jobs:
             else
               echo "ERROR: Could not get managed identity from compute after retry"
             fi
-            
+
             # Also assign workspace-level Contributor role to service principal
             if [ -n "$WORKSPACE_ID" ]; then
               az role assignment create \
@@ -197,7 +197,7 @@ jobs:
             az account set --subscription "$SUB_ID"
             az extension add --name ml -y
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
-            
+
             # Robust start: Check state first (Clusters don't need explicit start, but we can check provisioning state)
             STATE=$(az ml compute show --name warre-cluster --query provisioning_state -o tsv)
             if [ "$STATE" != "Succeeded" ]; then
@@ -205,7 +205,7 @@ jobs:
             else
               echo "Compute cluster is ready."
             fi
- 
+
       - name: Azure -- Environment Setup
         uses: Azure/CLI@v2.1.0
         env:
@@ -225,6 +225,7 @@ jobs:
             az configure --defaults group=$GROUP workspace=$WORKSPACE location=$LOCATION
             az ml environment create --file ./assignment/environment/pillow.yaml
             az ml environment create --file ./assignment/environment/tensorflow.yaml
+            az ml environment create --file ./assignment/components/register/conda.yaml --name aml-register-cli --version 0.1.0
 
       - name: Azure -- Component Setup
         uses: Azure/CLI@v2.1.0
@@ -363,21 +364,21 @@ jobs:
             RETRY_COUNT=0
             VERSION=""
             MODEL_NAME="animal-classification"  # Default to expected name
-            
+
             while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
               # Try to get the latest version of the model using model show
               VERSION=$(az ml model show --name animal-classification --version latest --query version -o tsv 2>/dev/null || echo "")
-              
+
               # If that fails, try listing and getting the first (should be latest)
               if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
                 VERSION=$(az ml model list --name animal-classification --query "[0].version" -o tsv 2>/dev/null || echo "")
               fi
-              
+
               if [ -n "$VERSION" ] && [ "$VERSION" != "null" ] && [ "$VERSION" != "" ]; then
                 echo "Model found! Name: $MODEL_NAME, Version: $VERSION"
                 break
               fi
-              
+
               # Also try getting any model (in case name differs)
               if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
                 ALL_MODELS_JSON=$(az ml model list --query "[].{name:name, version:version}" -o json 2>/dev/null || echo "[]")
@@ -397,7 +398,7 @@ jobs:
                   fi
                 fi
               fi
-              
+
               RETRY_COUNT=$((RETRY_COUNT + 1))
               echo "Attempt $RETRY_COUNT/$MAX_RETRIES: Model not found yet, waiting 10 seconds..."
               if [ $RETRY_COUNT -eq 5 ] || [ $RETRY_COUNT -eq 15 ]; then
@@ -406,14 +407,14 @@ jobs:
               fi
               sleep 10
             done
-            
+
             if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ "$VERSION" = "" ]; then
               echo "ERROR: No model found after $MAX_RETRIES attempts."
               echo "Listing all models to debug:"
               az ml model list --query "[].{name:name, version:version}" -o table
               exit 1
             fi
-            
+
             echo "Downloading model: $MODEL_NAME version $VERSION"
             az ml model download --name "$MODEL_NAME" --version "$VERSION" --download-path ./assignment/inference/model --resource-group $GROUP --workspace-name $WORKSPACE
 
@@ -439,7 +440,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha
-      
+
       - name: Docker -- Login to GHCR
         uses: docker/login-action@v3.2.0
         with:

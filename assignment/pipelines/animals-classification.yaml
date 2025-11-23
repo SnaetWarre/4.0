@@ -25,36 +25,36 @@ jobs:
     type: command
     component: azureml:data_prep_image_resize_cli@latest
     inputs:
-      data: 
+      data:
         type: uri_folder
         path: azureml:pandas:1
 
     outputs:
-      output_data: 
+      output_data:
         mode: rw_mount
 
   data_prep_cats:
     type: command
     component: azureml:data_prep_image_resize_cli@latest
     inputs:
-      data: 
+      data:
         type: uri_folder
         path: azureml:cats:1
 
     outputs:
-      output_data: 
+      output_data:
         mode: rw_mount
 
   data_prep_dogs:
     type: command
     component: azureml:data_prep_image_resize_cli@latest
     inputs:
-      data: 
+      data:
         type: uri_folder
         path: azureml:dogs:1
 
     outputs:
-      output_data: 
+      output_data:
         mode: rw_mount
 
   data_split:
@@ -83,13 +83,10 @@ jobs:
 
   register:
     type: command
-    component: azureml://registries/azureml/components/register_model/versions/0.0.21
+    component: azureml:register_model_cli@latest
     inputs:
       model_name: animal-classification
       model_type: custom_model
       model_path: ${{parent.jobs.training.outputs.output_model}}
     outputs:
-      registration_details_folder: ${{ parent.outputs.registration_details }}
-
-
-
+      registration_details: ${{parent.outputs.registration_details}}
