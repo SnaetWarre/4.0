@@ -38,7 +38,7 @@ os.makedirs(model_directory, exist_ok=True)  # CORRECT
 
 ### Custom Registration Component
 
-Created three new files:
+Created four new files:
 
 1. **`assignment/components/register/code/register.py`**
    - Python script that uses Azure ML SDK to register models
@@ -47,12 +47,17 @@ Created three new files:
    - Outputs registration details to JSON file
 
 2. **`assignment/components/register/conda.yaml`**
-   - Conda environment with required packages:
+   - Conda dependencies specification with required packages:
      - `azure-ai-ml>=1.11.0`
      - `azure-identity>=1.12.0`
      - `azureml-core>=1.48.0`
 
-3. **`assignment/components/register/register.yaml`**
+3. **`assignment/components/register/environment.yaml`**
+   - Azure ML environment definition file
+   - References the conda.yaml file for dependencies
+   - Uses base image: `mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest`
+
+4. **`assignment/components/register/register.yaml`**
    - Component definition
    - Accepts inputs: model_name, model_path, model_type
    - Outputs: registration_details folder
@@ -93,7 +98,7 @@ register:
 
 Added environment creation for registration component:
 ```yaml
-az ml environment create --file ./assignment/components/register/conda.yaml --name aml-register-cli --version 0.1.0
+az ml environment create --file ./assignment/components/register/environment.yaml
 ```
 
 The component registration loop automatically picks up the new `register.yaml` file.
