@@ -470,7 +470,4 @@ jobs:
 
       - name: Kubernetes -- Deploy
         run: |
-          # Replace GitHub template variables with actual values
-          sed -i 's|\${{ github.repository_owner }}|snaetwarre|g' ./assignment/kubernetes/deployment.yaml
-          sed -i 's|:latest|:master|g' ./assignment/kubernetes/deployment.yaml
           kubectl apply -f ./assignment/kubernetes/deployment.yaml
