@@ -462,9 +462,12 @@ jobs:
           push: true
           tags: ${{ steps.docker-meta-data.outputs.tags }}
 
+      - name: Prepare Kubernetes Config
+        run: |
+          mkdir -p $HOME/.kube
+          printf '%s\n' "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
       - name: Kubernetes -- Deploy
-        uses: actions-hub/kubectl@master
-        env:
-          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
-        with:
-          args: apply -f ./assignment/kubernetes/deployment.yaml
+        run: |
+          kubectl apply -f ./assignment/kubernetes/deployment.yaml
