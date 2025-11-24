@@ -18,7 +18,10 @@ spec:
         - name: animal-classification
           image: ghcr.io/snaetwarre/mlops-animals-api:master
           ports:
-            - containerPort: 80
+            - containerPort: 8000
+          env:
+            - name: MODEL_PATH
+              value: /app/model/animal-classification/INPUT_model_path/animal-cnn/model.keras
 ---
 apiVersion: v1
 kind: Service
@@ -30,4 +33,4 @@ spec:
     app: animal-classification
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 8000
