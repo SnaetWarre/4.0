@@ -1,10 +1,12 @@
 import argparse
 import json
 import os
+import time
 
 from azure.ai.ml import MLClient
 from azure.ai.ml.constants import AssetTypes
 from azure.ai.ml.entities import Model
+from azure.core.exceptions import HttpResponseError, ResourceExistsError
 from azure.identity import DefaultAzureCredential
 
 
@@ -60,18 +62,46 @@ def main():
 
     asset_type = model_type_map.get(args.model_type, AssetTypes.CUSTOM_MODEL)
 
-    # Create model entity
+    # Generate a timestamp-based version to avoid conflicts
+    # This ensures we always create a new version without checking existing ones
+    timestamp_version = str(int(time.time()))
+
+    print(f"Creating model with version: {timestamp_version}")
+
+    # Create model entity with explicit version
+    # By providing a version, we avoid the SDK trying to read existing models
     model = Model(
         path=args.model_path,
         name=args.model_name,
+        version=timestamp_version,
         type=asset_type,
-        description=f"Model registered via custom registration component",
+        description=f"Model registered via custom registration component at {time.strftime('%Y-%m-%d %H:%M:%S')}",
     )
 
     print("Registering model...")
-    registered_model = ml_client.models.create_or_update(model)
 
-    print(f"Model registered successfully!")
+    try:
+        # Create the model with explicit version - this should not require read permissions
+        registered_model = ml_client.models.create_or_update(model)
+        print(f"Model registered successfully!")
+
+    except HttpResponseError as e:
+        error_message = str(e)
+        if "AuthorizationFailed" in error_message and "read" in error_message.lower():
+            print("ERROR: The compute identity lacks permission to read models.")
+            print("This is required by the Azure ML SDK's create_or_update method.")
+            print("\nTo fix this, grant the compute identity one of these roles:")
+            print("  - Azure Machine Learning Data Scientist")
+            print("  - AzureML Data Scientist")
+            print(
+                "  - A custom role with 'Microsoft.MachineLearningServices/workspaces/models/*/read' permission"
+            )
+            print(f"\nCompute Identity: {e}")
+            raise
+        else:
+            print(f"ERROR: Failed to register model: {error_message}")
+            raise
+
     print(f"Model name: {registered_model.name}")
     print(f"Model version: {registered_model.version}")
     print(f"Model ID: {registered_model.id}")
@@ -84,6 +114,7 @@ def main():
         "version": str(registered_model.version),
         "id": registered_model.id,
         "type": args.model_type,
+        "registered_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
     output_file = os.path.join(args.registration_details, "registration_details.json")
